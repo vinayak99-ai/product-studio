@@ -1,4 +1,5 @@
 import { STAGES, type DesignThinkingStage } from '../../designThinkingTypes'
+import { ExportMenu } from './ExportMenu'
 
 interface StageHeaderProps {
   problemArea: string
@@ -6,7 +7,8 @@ interface StageHeaderProps {
   activeStage: DesignThinkingStage
   furthestIndex: number
   onSelectStage: (stage: DesignThinkingStage) => void
-  onExport: () => void
+  onExportMarkdown: () => void
+  onExportHtml: () => void
   exportBusy: boolean
   canExport: boolean
 }
@@ -17,7 +19,8 @@ export function StageHeader({
   activeStage,
   furthestIndex,
   onSelectStage,
-  onExport,
+  onExportMarkdown,
+  onExportHtml,
   exportBusy,
   canExport,
 }: StageHeaderProps) {
@@ -37,14 +40,12 @@ export function StageHeader({
             </span>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={onExport}
-          disabled={!canExport || exportBusy}
-          className="shrink-0 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {exportBusy ? 'Exporting…' : 'Export Markdown'}
-        </button>
+        <ExportMenu
+          onExportMarkdown={onExportMarkdown}
+          onExportHtml={onExportHtml}
+          busy={exportBusy}
+          disabled={!canExport}
+        />
       </div>
       <div className="mt-3 flex items-center gap-1.5">
         {STAGES.map((stage, i) => {

@@ -4,6 +4,7 @@ import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { ConceptBrief, ValidationPlan } from '../../designThinkingTypes'
 import { ClarifyPanel } from './ClarifyPanel'
 import { EditableText } from '../infographic/EditableText'
+import { ExportMenu } from './ExportMenu'
 import { GenerateBar } from './GenerateBar'
 import { StageIntroCard } from './StageIntroCard'
 
@@ -11,11 +12,12 @@ interface TestStageProps {
   briefs: ConceptBrief[]
   plans: ValidationPlan[]
   onChange: (plans: ValidationPlan[]) => void
-  onExport: () => void
+  onExportMarkdown: () => void
+  onExportHtml: () => void
   exportBusy: boolean
 }
 
-export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: TestStageProps) {
+export function TestStage({ briefs, plans, onChange, onExportMarkdown, onExportHtml, exportBusy }: TestStageProps) {
   const [prompt, setPrompt] = useState('')
 
   const clarify = useClarifyingGenerate<{ validation_plans: ValidationPlan[] }>(
@@ -110,16 +112,16 @@ export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: Tes
 
           <div className="flex flex-col items-start gap-1.5 rounded-xl border border-primary/30 bg-primary-light p-4">
             <p className="text-xs font-medium text-primary-dark">
-              Ready to hand this off — export as markdown and upload it into a Spec Builder project.
+              Ready to hand this off — export as Markdown to upload into a Spec Builder project, or as
+              HTML to paste into Confluence.
             </p>
-            <button
-              type="button"
-              onClick={onExport}
-              disabled={exportBusy}
-              className="rounded-md bg-primary px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {exportBusy ? 'Exporting…' : 'Export Markdown'}
-            </button>
+            <ExportMenu
+              onExportMarkdown={onExportMarkdown}
+              onExportHtml={onExportHtml}
+              busy={exportBusy}
+              disabled={false}
+              variant="primary"
+            />
           </div>
         </>
       ) : !clarify.questions ? (

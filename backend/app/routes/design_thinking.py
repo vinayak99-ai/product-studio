@@ -17,6 +17,7 @@ from app.design_thinking_llm import (
     run_clarify_round,
     sparks_block,
 )
+from app.design_thinking_html import build_design_thinking_html
 from app.design_thinking_markdown import build_design_thinking_markdown
 from app.design_thinking_models import (
     CLARIFY_MAX_ROUNDS,
@@ -196,4 +197,14 @@ def api_export(session: DesignThinkingSession) -> Response:
         content=markdown,
         media_type="text/markdown",
         headers={"Content-Disposition": 'attachment; filename="design-thinking.md"'},
+    )
+
+
+@router.post("/export/html")
+def api_export_html(session: DesignThinkingSession) -> Response:
+    html = build_design_thinking_html(session)
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": 'attachment; filename="design-thinking.html"'},
     )

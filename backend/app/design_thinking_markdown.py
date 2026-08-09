@@ -3,16 +3,20 @@ from __future__ import annotations
 from app.design_thinking_models import DesignThinkingSession
 
 
-def _executive_summary(session: DesignThinkingSession) -> str:
+def executive_summary(session: DesignThinkingSession) -> str:
     """Assembled deterministically from the session's own data, not a
     separate LLM call -- same reasoning as the infographic deck's agenda
     slide: the facts already exist in the session, so summarizing them is
     a formatting problem, not a generation problem. Placed first in the
     export so a skimming reader (human or Spec Builder's own extraction
     step) gets the point before any of the supporting detail.
+
+    Plain prose, no markup -- shared verbatim by both the Markdown and HTML
+    exports (see design_thinking_html.py), so it can't carry format-specific
+    syntax either one would need to strip or reinterpret.
     """
     persona_names = ", ".join(p.name for p in session.personas) or "the target users"
-    parts = [f"This exploration focused on **{session.problem_area}**, centered on {persona_names}."]
+    parts = [f"This exploration focused on {session.problem_area}, centered on {persona_names}."]
 
     povs = [s.assembled for s in session.problem_statements]
     if povs:
@@ -34,7 +38,7 @@ def build_design_thinking_markdown(session: DesignThinkingSession) -> str:
     already built to digest into problem_statement/target_users/goals.
     """
     lines: list[str] = [f"# Design Thinking: {session.problem_area}", "", "## Executive Summary", ""]
-    lines.append(_executive_summary(session))
+    lines.append(executive_summary(session))
     lines.append("")
 
     if session.personas:

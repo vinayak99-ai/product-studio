@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { EMPTY_SESSION, STAGES, type DesignThinkingStage } from '../designThinkingTypes'
-import { exportDesignThinkingMarkdown } from '../lib/designThinkingApi'
+import { exportDesignThinkingHtml, exportDesignThinkingMarkdown } from '../lib/designThinkingApi'
 import { StageHeader } from './design-thinking/StageHeader'
 import { EmpathizeStage } from './design-thinking/EmpathizeStage'
 import { DefineStage } from './design-thinking/DefineStage'
@@ -29,13 +29,15 @@ export function DesignThinkingPage() {
   const goTo = (stage: DesignThinkingStage) => setActiveStage(stage)
   const goToIndex = (i: number) => setActiveStage(STAGES[i].id)
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'markdown' | 'html') => {
     setExportBusy(true)
     try {
-      await exportDesignThinkingMarkdown({
-        ...session,
-        problem_area: session.problem_area.trim() || 'Untitled exploration',
-      })
+      const exportedSession = { ...session, problem_area: session.problem_area.trim() || 'Untitled exploration' }
+      if (format === 'html') {
+        await exportDesignThinkingHtml(exportedSession)
+      } else {
+        await exportDesignThinkingMarkdown(exportedSession)
+      }
     } finally {
       setExportBusy(false)
     }
@@ -49,7 +51,8 @@ export function DesignThinkingPage() {
         activeStage={activeStage}
         furthestIndex={furthestIndex}
         onSelectStage={goTo}
-        onExport={handleExport}
+        onExportMarkdown={() => handleExport('markdown')}
+        onExportHtml={() => handleExport('html')}
         exportBusy={exportBusy}
         canExport={session.personas.length > 0}
       />
@@ -95,7 +98,8 @@ export function DesignThinkingPage() {
             briefs={session.concept_briefs}
             plans={session.validation_plans}
             onChange={(validation_plans) => setSession((s) => ({ ...s, validation_plans }))}
-            onExport={handleExport}
+            onExportMarkdown={() => handleExport('markdown')}
+            onExportHtml={() => handleExport('html')}
             exportBusy={exportBusy}
           />
         ) : null}

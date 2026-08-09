@@ -120,8 +120,8 @@ export function generateValidationPlans(
   })
 }
 
-export async function exportDesignThinkingMarkdown(session: DesignThinkingSession): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/design-thinking/export`, {
+async function downloadExport(path: string, session: DesignThinkingSession, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(session),
@@ -133,7 +133,19 @@ export async function exportDesignThinkingMarkdown(session: DesignThinkingSessio
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'design-thinking.md'
+  link.download = filename
   link.click()
   URL.revokeObjectURL(url)
+}
+
+export function exportDesignThinkingMarkdown(session: DesignThinkingSession): Promise<void> {
+  return downloadExport('/api/design-thinking/export', session, 'design-thinking.md')
+}
+
+// Plain semantic HTML (headers, bullets, bold) -- meant to be opened in a
+// browser and copy-pasted into a rich-text editor like Confluence, which
+// picks up the tags directly rather than needing Markdown syntax cleaned up
+// by hand.
+export function exportDesignThinkingHtml(session: DesignThinkingSession): Promise<void> {
+  return downloadExport('/api/design-thinking/export/html', session, 'design-thinking.html')
 }
