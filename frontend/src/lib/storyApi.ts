@@ -11,8 +11,16 @@ export async function listStoryProjects(): Promise<StorySourceProject[]> {
   return res.json()
 }
 
+// Story Builder can source a story from either an existing Spec Builder
+// project's generated spec, or a document uploaded/pasted directly --
+// exactly one of these two shapes goes over the wire (see
+// StoryGenerateRequest._exactly_one_source on the backend).
+export type StorySource =
+  | { mode: 'project'; projectId: string }
+  | { mode: 'document'; material: string; materialName: string }
+
 export function openStoryGenerateSocket(
-  projectId: string,
+  source: StorySource,
   totalMinutes: number,
   prompt: string,
   onMessage: (message: StoryWsProgressMessage) => void,
@@ -21,7 +29,11 @@ export function openStoryGenerateSocket(
   const socket = new WebSocket(`${WS_BASE}/api/ws/generate-story`)
 
   socket.onopen = () => {
-    socket.send(JSON.stringify({ project_id: projectId, total_minutes: totalMinutes, prompt }))
+    const payload =
+      source.mode === 'project'
+        ? { project_id: source.projectId, total_minutes: totalMinutes, prompt }
+        : { material: source.material, material_name: source.materialName, total_minutes: totalMinutes, prompt }
+    socket.send(JSON.stringify(payload))
   }
   socket.onmessage = (event) => {
     onMessage(JSON.parse(event.data) as StoryWsProgressMessage)

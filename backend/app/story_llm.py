@@ -29,8 +29,9 @@ narrative."""
 
 def _story_plan_prompt(total_minutes: int) -> str:
     return f"""You are a presentation coach helping a product manager build the narrative for a \
-live demo to senior executives. Given a product's PRD and a target demo length, plan the story \
-as a sequence of timed beats -- moments in the talk, each backed by one supporting slide.
+live demo to senior executives. Given source material about a product (a generated spec, or any \
+uploaded document) and a target demo length, plan the story as a sequence of timed beats -- \
+moments in the talk, each backed by one supporting slide.
 
 Available slide templates:
 {STORY_TEMPLATE_CATALOG}
@@ -56,13 +57,13 @@ something, and don't leave so few that any one beat runs long.
 - Number of beats should fit the time budget: {STORY_MIN_BEATS}-{STORY_MAX_BEATS}, adjusted for \
 {total_minutes} minutes (a short demo needs fewer beats than a long one).
 - `title` is a short 2-6 word name for the whole story/talk.
-- Base everything on what the PRD actually describes. Do not invent claims, metrics, or \
-differentiators that aren't implied by the material.
+- Base everything on what the source material actually describes. Do not invent claims, metrics, \
+or differentiators that aren't implied by the material.
 """
 
 
 async def plan_story(prd_text: str, total_minutes: int, prompt: str) -> StoryPlan:
-    user_message = f"PRD:\n{prd_text}"
+    user_message = f"Source material:\n{prd_text}"
     if prompt:
         user_message += f"\n\nAdditional instructions:\n{prompt}"
     return await generate_structured(_story_plan_prompt(total_minutes), user_message, StoryPlan)
@@ -70,9 +71,9 @@ async def plan_story(prd_text: str, total_minutes: int, prompt: str) -> StoryPla
 
 NARRATION_SYSTEM_PROMPT = """You are a presentation coach writing spoken narration for one beat \
 of a live product demo to senior executives. Given the beat's label, its time budget, the slide \
-that will be on screen during this beat, and the product's full PRD for context, write natural, \
-confident spoken narration -- not bullet points, not a slide read aloud, but what a skilled \
-presenter would actually say out loud.
+that will be on screen during this beat, and the product's full source material for context, \
+write natural, confident spoken narration -- not bullet points, not a slide read aloud, but what \
+a skilled presenter would actually say out loud.
 
 Rules:
 - Write in first person, conversational spoken English, with natural transitions -- imagine this \
@@ -83,14 +84,15 @@ reverse.
 - Reference what's on the slide naturally ("as you can see here...") without literally reading \
 its bullet points aloud.
 - End on a note that transitions naturally toward the next beat, unless this is the closing beat.
-- Base every claim on the PRD. Do not invent a metric, quote, or claim that isn't in the material.
+- Base every claim on the source material. Do not invent a metric, quote, or claim that isn't in \
+the material.
 """
 
 
 async def generate_beat_narration(prd_text: str, beat_plan: StoryBeatPlan, slide: InfographicDiagram) -> str:
     duration = beat_plan.end_minute - beat_plan.start_minute
     user_message = (
-        f"PRD:\n{prd_text}\n\n"
+        f"Source material:\n{prd_text}\n\n"
         f'Beat: "{beat_plan.label}" ({duration:.1f} minutes, minute {beat_plan.start_minute:.1f} '
         f"to {beat_plan.end_minute:.1f} of the talk)\n"
         f"Beat's topic brief: {beat_plan.topic}\n\n"
@@ -129,7 +131,7 @@ async def _generate_indexed_beat(
 
 async def generate_story(
     prd_text: str,
-    project_id: str,
+    project_id: str | None,
     project_name: str,
     total_minutes: int,
     prompt: str,

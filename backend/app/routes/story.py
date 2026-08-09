@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from openai import OpenAIError
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from app.infographic_template import build_deck_pptx
 from app.spec_builder.export import export_to_markdown
@@ -18,9 +20,22 @@ router = APIRouter(prefix="/api")
 
 
 class StoryGenerateRequest(BaseModel):
-    project_id: str
+    # Exactly one of these two is provided -- either reuse a Spec Builder
+    # project's already-generated spec, or a document uploaded/pasted
+    # straight into Story Builder (see _resolve_source below).
+    project_id: str | None = None
+    material: str | None = None
+    material_name: str | None = None
     total_minutes: int = STORY_DEFAULT_MINUTES
     prompt: str = ""
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> "StoryGenerateRequest":
+        has_project = bool(self.project_id)
+        has_material = bool(self.material and self.material.strip())
+        if has_project == has_material:
+            raise ValueError("Provide exactly one of project_id or material.")
+        return self
 
 
 def _load_source_prd_markdown(project_id: str) -> tuple[str, str]:
@@ -38,6 +53,20 @@ def _load_source_prd_markdown(project_id: str) -> tuple[str, str]:
     return export_to_markdown(prd), prd.title
 
 
+def _resolve_source(request: StoryGenerateRequest) -> tuple[str, str | None, str]:
+    """Returns (material_text, source_project_id, source_name) for either
+    source mode. source_project_id is None for an uploaded document -- the
+    only place downstream code needs to branch on which mode was used."""
+    if request.project_id:
+        prd_text, project_title = _load_source_prd_markdown(request.project_id)
+        source_project = next((p for p in list_projects() if p.id == request.project_id), None)
+        name = source_project.name if source_project else project_title
+        return prd_text, request.project_id, name
+
+    name = request.material_name or "Uploaded document"
+    return request.material or "", None, name
+
+
 @router.get("/story/projects", response_model=list[StorySourceProject])
 def api_list_source_projects():
     return [
@@ -51,7 +80,7 @@ def api_export_script(story: StoryScript) -> Response:
     lines = [
         f"# {story.title}",
         "",
-        f"**Source project:** {story.source_project_name}  ",
+        f"**Source:** {story.source_project_name}  ",
         f"**Total length:** {story.total_minutes} minutes",
         "",
     ]
@@ -100,13 +129,14 @@ async def generate_story_ws(websocket: WebSocket) -> None:
                 continue
 
             try:
-                prd_text, project_title = _load_source_prd_markdown(request.project_id)
+                prd_text, source_project_id, project_name = _resolve_source(request)
             except HTTPException as exc:
                 await websocket.send_json({"stage": "error", "message": exc.detail})
                 continue
 
-            source_project = next((p for p in list_projects() if p.id == request.project_id), None)
-            project_name = source_project.name if source_project else project_title
+            if not prd_text.strip():
+                await websocket.send_json({"stage": "error", "message": "The uploaded document is empty."})
+                continue
 
             await websocket.send_json({"stage": "planning"})
             try:
@@ -126,7 +156,7 @@ async def generate_story_ws(websocket: WebSocket) -> None:
 
             try:
                 story = await generate_story(
-                    prd_text, request.project_id, project_name, request.total_minutes,
+                    prd_text, source_project_id, project_name, request.total_minutes,
                     request.prompt, plan, on_beat_done,
                 )
             except OpenAIError as exc:

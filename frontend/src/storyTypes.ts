@@ -30,7 +30,7 @@ export interface StoryBeat {
 export interface StoryScript {
   title: string
   total_minutes: number
-  source_project_id: string
+  source_project_id: string | null
   source_project_name: string
   beats: StoryBeat[]
 }

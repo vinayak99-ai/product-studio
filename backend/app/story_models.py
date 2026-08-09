@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 from app.infographic_models import InfographicDiagram, InfographicTemplateId
@@ -42,7 +44,10 @@ class StoryBeat(BaseModel):
 class StoryScript(BaseModel):
     title: str
     total_minutes: int
-    source_project_id: str
+    # None when the source was an uploaded document rather than an existing
+    # Spec Builder project -- source_project_name still holds a human-
+    # readable label (the project name, or the document's filename) either way.
+    source_project_id: str | None = None
     source_project_name: str
     beats: list[StoryBeat] = Field(default_factory=list)
 
