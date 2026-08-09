@@ -5,7 +5,7 @@ import {
   DocQaIcon,
   FlowchartIcon,
   InfographicIcon,
-  ReportIcon,
+  JiraIcon,
   SequenceIcon,
   SpecIcon,
   StoryIcon,
@@ -19,7 +19,7 @@ export type ToolId =
   | 'infographic'
   | 'story'
   | 'doc_qa'
-  | 'reports'
+  | 'jira'
   | 'data'
 
 export interface ToolDef {
@@ -81,15 +81,15 @@ export const TOOLS: ToolDef[] = [
       'answer grounded in the document itself, not outside knowledge.',
   },
   {
-    id: 'reports',
-    label: 'Report Generator',
+    id: 'jira',
+    label: 'Jira',
     status: 'soon',
-    icon: ReportIcon,
+    icon: JiraIcon,
     description:
-      'Turn a Spec Builder project — its stories, requirements, epics, and stakeholder ' +
-      'briefs — into a branded PDF or slide deck for leadership review, using the same ' +
-      'export pipeline Flowchart Builder already runs on PNG/PDF/PPTX.',
-    sharedWith: 'Reads Spec Builder projects, shares export engine with Flowchart Builder',
+      'Connect a Jira project and pull its epics, stories, statuses, sprints, and comments ' +
+      'straight into Product Studio — so a Spec Builder project can be enriched, cross-checked, ' +
+      'and kept in sync against what is actually being delivered.',
+    sharedWith: 'Feeds Spec Builder project enrichment; extends the existing Jira push/import already used there',
   },
   {
     id: 'data',

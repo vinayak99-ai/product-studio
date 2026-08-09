@@ -10,15 +10,6 @@ export function FlowchartIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-export function ReportIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
-      <path d="M7 3h7l4 4v14H7z" />
-      <path d="M14 3v4h4M9 13h6M9 17h6" />
-    </svg>
-  )
-}
-
 export function SpecIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
@@ -84,6 +75,19 @@ export function DocQaIcon(props: SVGProps<SVGSVGElement>) {
         fill="currentColor"
         fillOpacity="0.12"
       />
+    </svg>
+  )
+}
+
+export function JiraIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M8.5 4v16M15.5 4v16" strokeDasharray="1.5 2" />
+      <circle cx="8.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="8.5" cy="13" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none" />
     </svg>
   )
 }
