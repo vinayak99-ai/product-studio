@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 PERSONA_MIN_COUNT = 1
@@ -10,6 +12,14 @@ HMW_MAX_COUNT = 8
 CONCEPT_SPARK_MIN_COUNT = 6
 CONCEPT_SPARK_MAX_COUNT = 10
 CONCEPT_BRIEF_MAX_COUNT = 3
+
+# Every stage's primary generation runs behind a short Clarify Agent round --
+# same conversational-rounds pattern as Spec Builder's clarify agent, sized
+# down since each stage here is a smaller, lighter-weight generation than a
+# whole PRD.
+CLARIFY_ROUND_SIZE = 3
+CLARIFY_MAX_ROUNDS = 2
+CLARIFY_MAX_TOTAL_QUESTIONS = 5
 
 
 class Voice(BaseModel):
@@ -87,33 +97,112 @@ class DesignThinkingSession(BaseModel):
     validation_plans: list[ValidationPlan] = Field(default_factory=list)
 
 
+# ---------- Clarify Agent: shared across every stage's primary generation ----------
+# Modeled on Spec Builder's clarify agent (app/spec_builder/agents.py): rather
+# than generating straight from whatever the PM typed, each stage's primary
+# generation call first gets a chance to ask a small, prioritized round of
+# questions, feeding prior answers back in so a follow-up round is genuinely
+# informed -- not a flat batch. Stateless by design (unlike Spec Builder's
+# file-backed pending_clarification): Design Thinking has no server-side
+# persistence, so the frontend carries the accumulated answers and round
+# number on every request instead.
+
+
+class ClarifyQuestion(BaseModel):
+    id: str = Field(description="Short id, e.g. 'Q1', 'Q2'")
+    question: str
+    options: list[str] = Field(
+        default_factory=list,
+        description=(
+            "2-5 mutually exclusive options if this is best asked as multiple-choice; "
+            "leave empty for a short-answer question."
+        ),
+    )
+    recommended: str | None = Field(
+        default=None,
+        description=(
+            "The recommended choice (must match one of `options` verbatim), or a "
+            "suggested short answer if `options` is empty."
+        ),
+    )
+
+
+class AnsweredClarification(BaseModel):
+    question: ClarifyQuestion
+    answer: str
+
+
+class ClarifyResult(BaseModel):
+    questions: list[ClarifyQuestion] = Field(
+        default_factory=list,
+        description=(
+            f"Up to {CLARIFY_ROUND_SIZE} highest-impact clarifying questions for THIS round. "
+            "Empty list means the input is already clear enough to generate from."
+        ),
+    )
+
+
 # ---------- Stage request/response shapes ----------
+# Each stage's primary generation Request carries the clarify state
+# (`clarifications` answered so far, which `round` this call is, and an
+# escape hatch `force_generate` to skip straight to generation) and its
+# Response is a status-discriminated wrapper (needs_clarification | generated)
+# around the plain generation output. `concept-sparks` (Ideate's second
+# generation step, derived from already-clarified HMWs) is left unwrapped --
+# it stays a single-shot batch generation, same as before.
 
 
 class EmpathizeRequest(BaseModel):
     material: str
     prompt: str = ""
+    clarifications: list[AnsweredClarification] = Field(default_factory=list)
+    round: int = 1
+    force_generate: bool = False
 
 
 class EmpathizeResponse(BaseModel):
     personas: list[Persona] = Field(default_factory=list)
 
 
+class EmpathizeResult(BaseModel):
+    status: Literal["needs_clarification", "generated"]
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
+    personas: list[Persona] = Field(default_factory=list)
+
+
 class DefineRequest(BaseModel):
     personas: list[Persona]
     prompt: str = ""
+    clarifications: list[AnsweredClarification] = Field(default_factory=list)
+    round: int = 1
+    force_generate: bool = False
 
 
 class DefineResponse(BaseModel):
     problem_statements: list[ProblemStatement] = Field(default_factory=list)
 
 
+class DefineResult(BaseModel):
+    status: Literal["needs_clarification", "generated"]
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
+    problem_statements: list[ProblemStatement] = Field(default_factory=list)
+
+
 class IdeateHmwRequest(BaseModel):
     problem_statements: list[ProblemStatement]
     prompt: str = ""
+    clarifications: list[AnsweredClarification] = Field(default_factory=list)
+    round: int = 1
+    force_generate: bool = False
 
 
 class IdeateHmwResponse(BaseModel):
+    how_might_we: list[HowMightWe] = Field(default_factory=list)
+
+
+class IdeateHmwResult(BaseModel):
+    status: Literal["needs_clarification", "generated"]
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
     how_might_we: list[HowMightWe] = Field(default_factory=list)
 
 
@@ -129,16 +218,34 @@ class IdeateSparksResponse(BaseModel):
 class PrototypeRequest(BaseModel):
     concept_sparks: list[ConceptSpark]
     prompt: str = ""
+    clarifications: list[AnsweredClarification] = Field(default_factory=list)
+    round: int = 1
+    force_generate: bool = False
 
 
 class PrototypeResponse(BaseModel):
     concept_briefs: list[ConceptBrief] = Field(default_factory=list)
 
 
+class PrototypeResult(BaseModel):
+    status: Literal["needs_clarification", "generated"]
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
+    concept_briefs: list[ConceptBrief] = Field(default_factory=list)
+
+
 class TestRequest(BaseModel):
     concept_briefs: list[ConceptBrief]
     prompt: str = ""
+    clarifications: list[AnsweredClarification] = Field(default_factory=list)
+    round: int = 1
+    force_generate: bool = False
 
 
 class TestResponse(BaseModel):
+    validation_plans: list[ValidationPlan] = Field(default_factory=list)
+
+
+class TestResult(BaseModel):
+    status: Literal["needs_clarification", "generated"]
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
     validation_plans: list[ValidationPlan] = Field(default_factory=list)

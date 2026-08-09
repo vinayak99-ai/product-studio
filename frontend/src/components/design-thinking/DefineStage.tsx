@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { generateProblemStatements } from '../../lib/designThinkingApi'
+import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { Persona, ProblemStatement } from '../../designThinkingTypes'
+import { ClarifyPanel } from './ClarifyPanel'
 import { EditableText } from '../infographic/EditableText'
 import { GenerateBar } from './GenerateBar'
 import { StageIntroCard } from './StageIntroCard'
@@ -14,21 +16,12 @@ interface DefineStageProps {
 
 export function DefineStage({ personas, statements, onChange, onContinue }: DefineStageProps) {
   const [prompt, setPrompt] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const handleGenerate = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      const { problem_statements } = await generateProblemStatements(personas, prompt)
-      onChange(problem_statements)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const clarify = useClarifyingGenerate<{ problem_statements: ProblemStatement[] }>(
+    (clarifications, round, forceGenerate) =>
+      generateProblemStatements(personas, prompt, clarifications, round, forceGenerate),
+    (result) => onChange(result.problem_statements),
+  )
 
   const updateStatement = (i: number, assembled: string) => {
     const next = statements.slice()
@@ -42,12 +35,26 @@ export function DefineStage({ personas, statements, onChange, onContinue }: Defi
         prompt={prompt}
         onPromptChange={setPrompt}
         placeholder="Optional nudge, e.g. 'Weight the reliability pain more heavily.'"
-        onGenerate={handleGenerate}
-        busy={busy}
+        onGenerate={clarify.start}
+        busy={clarify.busy}
         hasResult={statements.length > 0}
         disabled={personas.length === 0}
-        error={error}
+        error={clarify.questions ? null : clarify.error}
       />
+
+      {clarify.questions ? (
+        <ClarifyPanel
+          stageLabel="problem statements"
+          round={clarify.round}
+          questions={clarify.questions}
+          answers={clarify.answers}
+          onAnswerChange={clarify.setAnswer}
+          onSubmit={() => clarify.submit(false)}
+          onSkip={() => clarify.submit(true)}
+          busy={clarify.busy}
+          error={clarify.error}
+        />
+      ) : null}
 
       {statements.length > 0 ? (
         <>
@@ -75,7 +82,7 @@ export function DefineStage({ personas, statements, onChange, onContinue }: Defi
             Continue to Ideate →
           </button>
         </>
-      ) : (
+      ) : !clarify.questions ? (
         <StageIntroCard
           title="What Define produces"
           steps={[
@@ -84,7 +91,7 @@ export function DefineStage({ personas, statements, onChange, onContinue }: Defi
             'Deliberately no solution here — that comes in Ideate',
           ]}
         />
-      )}
+      ) : null}
     </div>
   )
 }

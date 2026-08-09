@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.llm_client import generate_structured
 from app.design_thinking_models import (
+    CLARIFY_ROUND_SIZE,
     CONCEPT_BRIEF_MAX_COUNT,
     CONCEPT_SPARK_MAX_COUNT,
     CONCEPT_SPARK_MIN_COUNT,
@@ -10,6 +11,8 @@ from app.design_thinking_models import (
     PERSONA_MAX_COUNT,
     PERSONA_MIN_COUNT,
     PROBLEM_STATEMENT_MAX_COUNT,
+    AnsweredClarification,
+    ClarifyResult,
     ConceptBrief,
     ConceptSpark,
     DefineResponse,
@@ -23,6 +26,51 @@ from app.design_thinking_models import (
     TestResponse,
     ValidationPlan,
 )
+
+# ---------- Clarify Agent ----------
+# One shared clarify round reused by every stage below -- the stage supplies
+# its own label and a rendered block of its current input as context, mirroring
+# Spec Builder's run_clarify (app/spec_builder/agents.py) but generalized
+# since each stage's input shape differs (raw text, personas, problem
+# statements, ...).
+
+CLARIFY_SYSTEM_PROMPT = f"""You are conducting a short, conversational clarification round with a PM \
+before a design thinking stage generates its output. Be conversational -- do not dump every possible \
+question at once; ask the most important ones first and fill in gaps as you go.
+
+Return at most {CLARIFY_ROUND_SIZE} clarifying questions for THIS round, prioritized by how much the \
+answer would actually change the output -- skip anything that's merely nice-to-know. Prefer \
+multiple-choice questions with 2-5 mutually exclusive options and a recommended default; use a \
+short-answer question only when options don't make sense, and always suggest a likely answer.
+
+You may be called again after the PM answers this round's questions, with their answers included as \
+prior context. Do not repeat anything already answered -- only ask a follow-up if an answer surfaced a \
+genuinely new, high-impact gap, not just to fill the round.
+
+If the input is already clear enough to generate solid output, return an empty list of questions -- do \
+not ask questions just to have something to ask.
+"""
+
+
+def _clarifications_lines(clarifications: list[AnsweredClarification]) -> str:
+    return "\n".join(f"- {c.question.question} -> {c.answer}" for c in clarifications)
+
+
+async def run_clarify_round(
+    stage_label: str,
+    context_block: str,
+    clarifications: list[AnsweredClarification],
+) -> ClarifyResult:
+    history_block = _clarifications_lines(clarifications) or "(none yet -- this is the first round)"
+    prompt = f"""
+    Design thinking stage: {stage_label}
+
+    {context_block}
+
+    Already answered in this clarification round:
+    {history_block}
+    """
+    return await generate_structured(CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
 
 PERSONA_SYSTEM_PROMPT = f"""You are a UX researcher running the Empathize stage of design thinking. \
 Given raw material (interview notes, support tickets, survey quotes, observations) and an optional \
@@ -44,12 +92,17 @@ that aren't implied by the material or prompt.
 """
 
 
-async def generate_personas(material: str, prompt: str) -> EmpathizeResponse:
-    user_message = f"Source material:\n{material}\n\nInstructions:\n{prompt}"
+async def generate_personas(
+    material: str, prompt: str, clarifications: list[AnsweredClarification]
+) -> EmpathizeResponse:
+    user_message = (
+        f"Source material:\n{material}\n\nInstructions:\n{prompt}\n\n"
+        f"Clarifying Q&A with the PM:\n{_clarifications_lines(clarifications) or '(none)'}"
+    )
     return await generate_structured(PERSONA_SYSTEM_PROMPT, user_message, EmpathizeResponse)
 
 
-def _personas_block(personas: list[Persona]) -> str:
+def personas_block(personas: list[Persona]) -> str:
     lines = []
     for p in personas:
         lines.append(f"- {p.name} ({p.context})")
@@ -83,12 +136,17 @@ the same meaning).
 """
 
 
-async def generate_problem_statements(personas: list[Persona], prompt: str) -> DefineResponse:
-    user_message = f"Personas:\n{_personas_block(personas)}\n\nInstructions:\n{prompt}"
+async def generate_problem_statements(
+    personas: list[Persona], prompt: str, clarifications: list[AnsweredClarification]
+) -> DefineResponse:
+    user_message = (
+        f"Personas:\n{personas_block(personas)}\n\nInstructions:\n{prompt}\n\n"
+        f"Clarifying Q&A with the PM:\n{_clarifications_lines(clarifications) or '(none)'}"
+    )
     return await generate_structured(PROBLEM_STATEMENT_SYSTEM_PROMPT, user_message, DefineResponse)
 
 
-def _problem_statements_block(statements: list[ProblemStatement]) -> str:
+def problem_statements_block(statements: list[ProblemStatement]) -> str:
     return "\n".join(f"- ({s.persona_name}) {s.assembled}" for s in statements)
 
 
@@ -109,12 +167,17 @@ more ambitious one, rather than all HMWs sitting at the same altitude.
 """
 
 
-async def generate_how_might_we(statements: list[ProblemStatement], prompt: str) -> IdeateHmwResponse:
-    user_message = f"Problem statements:\n{_problem_statements_block(statements)}\n\nInstructions:\n{prompt}"
+async def generate_how_might_we(
+    statements: list[ProblemStatement], prompt: str, clarifications: list[AnsweredClarification]
+) -> IdeateHmwResponse:
+    user_message = (
+        f"Problem statements:\n{problem_statements_block(statements)}\n\nInstructions:\n{prompt}\n\n"
+        f"Clarifying Q&A with the PM:\n{_clarifications_lines(clarifications) or '(none)'}"
+    )
     return await generate_structured(HMW_SYSTEM_PROMPT, user_message, IdeateHmwResponse)
 
 
-def _hmw_block(items: list[HowMightWe]) -> str:
+def hmw_block(items: list[HowMightWe]) -> str:
     return "\n".join(f"- {h.question} ({h.rationale})" for h in items)
 
 
@@ -138,11 +201,11 @@ All others should have `is_wildcard` false.
 
 
 async def generate_concept_sparks(selected: list[HowMightWe], prompt: str) -> IdeateSparksResponse:
-    user_message = f"Selected How Might We questions:\n{_hmw_block(selected)}\n\nInstructions:\n{prompt}"
+    user_message = f"Selected How Might We questions:\n{hmw_block(selected)}\n\nInstructions:\n{prompt}"
     return await generate_structured(CONCEPT_SPARK_SYSTEM_PROMPT, user_message, IdeateSparksResponse)
 
 
-def _sparks_block(sparks: list[ConceptSpark]) -> str:
+def sparks_block(sparks: list[ConceptSpark]) -> str:
     return "\n".join(f"- [{s.how_might_we}] {s.idea}{' (wildcard)' if s.is_wildcard else ''}" for s in sparks)
 
 
@@ -165,12 +228,17 @@ they can be tested later. This is the critical-thinking step: surface what you'r
 """
 
 
-async def generate_concept_briefs(sparks: list[ConceptSpark], prompt: str) -> PrototypeResponse:
-    user_message = f"Selected concept sparks:\n{_sparks_block(sparks)}\n\nInstructions:\n{prompt}"
+async def generate_concept_briefs(
+    sparks: list[ConceptSpark], prompt: str, clarifications: list[AnsweredClarification]
+) -> PrototypeResponse:
+    user_message = (
+        f"Selected concept sparks:\n{sparks_block(sparks)}\n\nInstructions:\n{prompt}\n\n"
+        f"Clarifying Q&A with the PM:\n{_clarifications_lines(clarifications) or '(none)'}"
+    )
     return await generate_structured(CONCEPT_BRIEF_SYSTEM_PROMPT, user_message, PrototypeResponse)
 
 
-def _briefs_block(briefs: list[ConceptBrief]) -> str:
+def briefs_block(briefs: list[ConceptBrief]) -> str:
     lines = []
     for b in briefs:
         lines.append(f"- {b.concept_name}: {b.description}")
@@ -198,6 +266,11 @@ actually see happen if the hypothesis is false.
 """
 
 
-async def generate_validation_plans(briefs: list[ConceptBrief], prompt: str) -> TestResponse:
-    user_message = f"Concept briefs:\n{_briefs_block(briefs)}\n\nInstructions:\n{prompt}"
+async def generate_validation_plans(
+    briefs: list[ConceptBrief], prompt: str, clarifications: list[AnsweredClarification]
+) -> TestResponse:
+    user_message = (
+        f"Concept briefs:\n{briefs_block(briefs)}\n\nInstructions:\n{prompt}\n\n"
+        f"Clarifying Q&A with the PM:\n{_clarifications_lines(clarifications) or '(none)'}"
+    )
     return await generate_structured(VALIDATION_PLAN_SYSTEM_PROMPT, user_message, TestResponse)

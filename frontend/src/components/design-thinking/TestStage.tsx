@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { generateValidationPlans } from '../../lib/designThinkingApi'
+import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { ConceptBrief, ValidationPlan } from '../../designThinkingTypes'
+import { ClarifyPanel } from './ClarifyPanel'
 import { EditableText } from '../infographic/EditableText'
 import { GenerateBar } from './GenerateBar'
 import { StageIntroCard } from './StageIntroCard'
@@ -15,21 +17,12 @@ interface TestStageProps {
 
 export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: TestStageProps) {
   const [prompt, setPrompt] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const handleGenerate = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      const { validation_plans } = await generateValidationPlans(briefs, prompt)
-      onChange(validation_plans)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const clarify = useClarifyingGenerate<{ validation_plans: ValidationPlan[] }>(
+    (clarifications, round, forceGenerate) =>
+      generateValidationPlans(briefs, prompt, clarifications, round, forceGenerate),
+    (result) => onChange(result.validation_plans),
+  )
 
   const updatePlan = (i: number, patch: Partial<ValidationPlan>) => {
     const next = plans.slice()
@@ -43,14 +36,28 @@ export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: Tes
         prompt={prompt}
         onPromptChange={setPrompt}
         placeholder="Optional nudge, e.g. 'Focus hypotheses on the riskiest assumption.'"
-        onGenerate={handleGenerate}
-        busy={busy}
+        onGenerate={clarify.start}
+        busy={clarify.busy}
         hasResult={plans.length > 0}
         disabled={briefs.length === 0}
-        error={error}
+        error={clarify.questions ? null : clarify.error}
       />
       {briefs.length === 0 ? (
         <p className="text-xs text-neutral-400">Generate concept briefs in Prototype first.</p>
+      ) : null}
+
+      {clarify.questions ? (
+        <ClarifyPanel
+          stageLabel="validation plans"
+          round={clarify.round}
+          questions={clarify.questions}
+          answers={clarify.answers}
+          onAnswerChange={clarify.setAnswer}
+          onSubmit={() => clarify.submit(false)}
+          onSkip={() => clarify.submit(true)}
+          busy={clarify.busy}
+          error={clarify.error}
+        />
       ) : null}
 
       {plans.length > 0 ? (
@@ -115,7 +122,7 @@ export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: Tes
             </button>
           </div>
         </>
-      ) : (
+      ) : !clarify.questions ? (
         <StageIntroCard
           title="What Test produces"
           steps={[
@@ -124,7 +131,7 @@ export function TestStage({ briefs, plans, onChange, onExport, exportBusy }: Tes
             'What happens if you’re wrong, grounded in the concept’s biggest risk',
           ]}
         />
-      )}
+      ) : null}
     </div>
   )
 }

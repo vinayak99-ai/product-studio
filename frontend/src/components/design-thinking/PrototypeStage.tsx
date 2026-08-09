@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { generateConceptBriefs } from '../../lib/designThinkingApi'
+import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { ConceptBrief, ConceptSpark } from '../../designThinkingTypes'
+import { ClarifyPanel } from './ClarifyPanel'
 import { EditableText } from '../infographic/EditableText'
 import { GenerateBar } from './GenerateBar'
 import { StageIntroCard } from './StageIntroCard'
@@ -14,23 +16,14 @@ interface PrototypeStageProps {
 
 export function PrototypeStage({ sparks, briefs, onChange, onContinue }: PrototypeStageProps) {
   const [prompt, setPrompt] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const selectedSparks = sparks.filter((s) => s.selected)
 
-  const handleGenerate = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      const { concept_briefs } = await generateConceptBriefs(sparks, prompt)
-      onChange(concept_briefs)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const clarify = useClarifyingGenerate<{ concept_briefs: ConceptBrief[] }>(
+    (clarifications, round, forceGenerate) =>
+      generateConceptBriefs(sparks, prompt, clarifications, round, forceGenerate),
+    (result) => onChange(result.concept_briefs),
+  )
 
   const updateBrief = (i: number, patch: Partial<ConceptBrief>) => {
     const next = briefs.slice()
@@ -44,14 +37,28 @@ export function PrototypeStage({ sparks, briefs, onChange, onContinue }: Prototy
         prompt={prompt}
         onPromptChange={setPrompt}
         placeholder="Optional nudge, e.g. 'Keep the brief implementation-agnostic.'"
-        onGenerate={handleGenerate}
-        busy={busy}
+        onGenerate={clarify.start}
+        busy={clarify.busy}
         hasResult={briefs.length > 0}
         disabled={selectedSparks.length === 0}
-        error={error}
+        error={clarify.questions ? null : clarify.error}
       />
       {selectedSparks.length === 0 ? (
         <p className="text-xs text-neutral-400">Select at least one concept spark in Ideate first.</p>
+      ) : null}
+
+      {clarify.questions ? (
+        <ClarifyPanel
+          stageLabel="concept briefs"
+          round={clarify.round}
+          questions={clarify.questions}
+          answers={clarify.answers}
+          onAnswerChange={clarify.setAnswer}
+          onSubmit={() => clarify.submit(false)}
+          onSkip={() => clarify.submit(true)}
+          busy={clarify.busy}
+          error={clarify.error}
+        />
       ) : null}
 
       {briefs.length > 0 ? (
@@ -123,7 +130,7 @@ export function PrototypeStage({ sparks, briefs, onChange, onContinue }: Prototy
             Continue to Test →
           </button>
         </>
-      ) : (
+      ) : !clarify.questions ? (
         <StageIntroCard
           title="What Prototype produces"
           steps={[
@@ -132,7 +139,7 @@ export function PrototypeStage({ sparks, briefs, onChange, onContinue }: Prototy
             'The single biggest risk, stated plainly',
           ]}
         />
-      )}
+      ) : null}
     </div>
   )
 }

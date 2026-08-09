@@ -1,10 +1,16 @@
 import type {
+  AnsweredClarification,
   ConceptBrief,
   ConceptSpark,
+  DefineResult,
   DesignThinkingSession,
+  EmpathizeResult,
   HowMightWe,
+  IdeateHmwResult,
   Persona,
+  PrototypeResult,
   ProblemStatement,
+  TestResult,
   ValidationPlan,
 } from '../designThinkingTypes'
 
@@ -22,22 +28,57 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json()
 }
 
-export function generatePersonas(material: string, prompt: string): Promise<{ personas: Persona[] }> {
-  return post('/api/design-thinking/empathize', { material, prompt })
+// The five clarify-enabled generation calls all take the same trailing
+// (clarifications, round, forceGenerate) triple -- the state the
+// useClarifyingGenerate hook (see lib/useClarifyingGenerate.ts) accumulates
+// across rounds -- and resolve to a ClarifyOutcome the hook can branch on.
+
+export function generatePersonas(
+  material: string,
+  prompt: string,
+  clarifications: AnsweredClarification[],
+  round: number,
+  forceGenerate: boolean,
+): Promise<EmpathizeResult> {
+  return post('/api/design-thinking/empathize', {
+    material,
+    prompt,
+    clarifications,
+    round,
+    force_generate: forceGenerate,
+  })
 }
 
 export function generateProblemStatements(
   personas: Persona[],
   prompt: string,
-): Promise<{ problem_statements: ProblemStatement[] }> {
-  return post('/api/design-thinking/define', { personas, prompt })
+  clarifications: AnsweredClarification[],
+  round: number,
+  forceGenerate: boolean,
+): Promise<DefineResult> {
+  return post('/api/design-thinking/define', {
+    personas,
+    prompt,
+    clarifications,
+    round,
+    force_generate: forceGenerate,
+  })
 }
 
 export function generateHowMightWe(
   problem_statements: ProblemStatement[],
   prompt: string,
-): Promise<{ how_might_we: HowMightWe[] }> {
-  return post('/api/design-thinking/ideate/how-might-we', { problem_statements, prompt })
+  clarifications: AnsweredClarification[],
+  round: number,
+  forceGenerate: boolean,
+): Promise<IdeateHmwResult> {
+  return post('/api/design-thinking/ideate/how-might-we', {
+    problem_statements,
+    prompt,
+    clarifications,
+    round,
+    force_generate: forceGenerate,
+  })
 }
 
 export function generateConceptSparks(
@@ -50,15 +91,33 @@ export function generateConceptSparks(
 export function generateConceptBriefs(
   concept_sparks: ConceptSpark[],
   prompt: string,
-): Promise<{ concept_briefs: ConceptBrief[] }> {
-  return post('/api/design-thinking/prototype', { concept_sparks, prompt })
+  clarifications: AnsweredClarification[],
+  round: number,
+  forceGenerate: boolean,
+): Promise<PrototypeResult> {
+  return post('/api/design-thinking/prototype', {
+    concept_sparks,
+    prompt,
+    clarifications,
+    round,
+    force_generate: forceGenerate,
+  })
 }
 
 export function generateValidationPlans(
   concept_briefs: ConceptBrief[],
   prompt: string,
-): Promise<{ validation_plans: ValidationPlan[] }> {
-  return post('/api/design-thinking/test', { concept_briefs, prompt })
+  clarifications: AnsweredClarification[],
+  round: number,
+  forceGenerate: boolean,
+): Promise<TestResult> {
+  return post('/api/design-thinking/test', {
+    concept_briefs,
+    prompt,
+    clarifications,
+    round,
+    force_generate: forceGenerate,
+  })
 }
 
 export async function exportDesignThinkingMarkdown(session: DesignThinkingSession): Promise<void> {

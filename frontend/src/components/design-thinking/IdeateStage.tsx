@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { generateConceptSparks, generateHowMightWe } from '../../lib/designThinkingApi'
+import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { ConceptSpark, HowMightWe, ProblemStatement } from '../../designThinkingTypes'
+import { ClarifyPanel } from './ClarifyPanel'
 import { StageIntroCard } from './StageIntroCard'
 
 interface IdeateStageProps {
@@ -22,35 +24,32 @@ export function IdeateStage({
 }: IdeateStageProps) {
   const [hmwPrompt, setHmwPrompt] = useState('')
   const [sparkPrompt, setSparkPrompt] = useState('')
-  const [busyHmw, setBusyHmw] = useState(false)
   const [busySparks, setBusySparks] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [sparkError, setSparkError] = useState<string | null>(null)
+
+  // Only How Might We -- the first, judgment-heavy reframing step -- runs
+  // behind the Clarify Agent. Concept sparks stay a single-shot batch
+  // generation off the (now clarified) selected HMWs, same as before.
+  const hmwClarify = useClarifyingGenerate<{ how_might_we: HowMightWe[] }>(
+    (clarifications, round, forceGenerate) =>
+      generateHowMightWe(statements, hmwPrompt, clarifications, round, forceGenerate),
+    (result) => {
+      onHmwChange(result.how_might_we)
+      onSparksChange([])
+    },
+  )
 
   const selectedHmws = hmws.filter((h) => h.selected)
   const selectedSparks = sparks.filter((s) => s.selected)
 
-  const handleGenerateHmw = async () => {
-    setError(null)
-    setBusyHmw(true)
-    try {
-      const { how_might_we } = await generateHowMightWe(statements, hmwPrompt)
-      onHmwChange(how_might_we)
-      onSparksChange([])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    } finally {
-      setBusyHmw(false)
-    }
-  }
-
   const handleGenerateSparks = async () => {
-    setError(null)
+    setSparkError(null)
     setBusySparks(true)
     try {
       const { concept_sparks } = await generateConceptSparks(hmws, sparkPrompt)
       onSparksChange(concept_sparks)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      setSparkError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
       setBusySparks(false)
     }
@@ -90,13 +89,32 @@ export function IdeateStage({
           />
           <button
             type="button"
-            onClick={handleGenerateHmw}
-            disabled={busyHmw || statements.length === 0}
+            onClick={hmwClarify.start}
+            disabled={hmwClarify.busy || statements.length === 0}
             className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {busyHmw ? 'Generating…' : hmws.length > 0 ? 'Regenerate' : 'Generate'}
+            {hmwClarify.busy ? 'Generating…' : hmws.length > 0 ? 'Regenerate' : 'Generate'}
           </button>
         </div>
+        {!hmwClarify.questions && hmwClarify.error ? (
+          <p className="mt-2 text-xs text-red-600">{hmwClarify.error}</p>
+        ) : null}
+
+        {hmwClarify.questions ? (
+          <div className="mt-3">
+            <ClarifyPanel
+              stageLabel="How Might We questions"
+              round={hmwClarify.round}
+              questions={hmwClarify.questions}
+              answers={hmwClarify.answers}
+              onAnswerChange={hmwClarify.setAnswer}
+              onSubmit={() => hmwClarify.submit(false)}
+              onSkip={() => hmwClarify.submit(true)}
+              busy={hmwClarify.busy}
+              error={hmwClarify.error}
+            />
+          </div>
+        ) : null}
 
         {hmws.length > 0 ? (
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -120,7 +138,7 @@ export function IdeateStage({
               </label>
             ))}
           </div>
-        ) : (
+        ) : !hmwClarify.questions ? (
           <div className="mt-3">
             <StageIntroCard
               title="What How Might We produces"
@@ -131,7 +149,7 @@ export function IdeateStage({
               ]}
             />
           </div>
-        )}
+        ) : null}
       </div>
 
       {hmws.length > 0 ? (
@@ -162,6 +180,7 @@ export function IdeateStage({
           {selectedHmws.length === 0 ? (
             <p className="mt-2 text-xs text-neutral-400">Select at least one How Might We above first.</p>
           ) : null}
+          {sparkError ? <p className="mt-2 text-xs text-red-600">{sparkError}</p> : null}
 
           {sparks.length > 0 ? (
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -192,8 +211,6 @@ export function IdeateStage({
           ) : null}
         </div>
       ) : null}
-
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {selectedSparks.length > 0 ? (
         <button

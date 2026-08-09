@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { generatePersonas } from '../../lib/designThinkingApi'
+import { useClarifyingGenerate } from '../../lib/useClarifyingGenerate'
 import type { Persona } from '../../designThinkingTypes'
+import { ClarifyPanel } from './ClarifyPanel'
 import { PersonaCard } from './PersonaCard'
 import { StageIntroCard } from './StageIntroCard'
 
@@ -13,25 +15,24 @@ interface EmpathizeStageProps {
 export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStageProps) {
   const [material, setMaterial] = useState('')
   const [prompt, setPrompt] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [preflightError, setPreflightError] = useState<string | null>(null)
 
-  const handleGenerate = async () => {
+  const clarify = useClarifyingGenerate<{ personas: Persona[] }>(
+    (clarifications, round, forceGenerate) =>
+      generatePersonas(material, prompt, clarifications, round, forceGenerate),
+    (result) => onChange(result.personas),
+  )
+
+  const handleGenerate = () => {
     if (!material.trim()) {
-      setError('Paste some research material first — interview notes, tickets, survey quotes.')
+      setPreflightError('Paste some research material first — interview notes, tickets, survey quotes.')
       return
     }
-    setError(null)
-    setBusy(true)
-    try {
-      const { personas: result } = await generatePersonas(material, prompt)
-      onChange(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
+    setPreflightError(null)
+    clarify.start()
   }
+
+  const busy = clarify.busy
 
   const updatePersona = (i: number, persona: Persona) => {
     const next = personas.slice()
@@ -71,8 +72,22 @@ export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStag
             {busy ? 'Generating…' : personas.length > 0 ? 'Regenerate personas' : 'Generate personas'}
           </button>
         </div>
-        {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
+        {preflightError ? <p className="mt-2 text-xs text-red-600">{preflightError}</p> : null}
       </div>
+
+      {clarify.questions ? (
+        <ClarifyPanel
+          stageLabel="personas"
+          round={clarify.round}
+          questions={clarify.questions}
+          answers={clarify.answers}
+          onAnswerChange={clarify.setAnswer}
+          onSubmit={() => clarify.submit(false)}
+          onSkip={() => clarify.submit(true)}
+          busy={clarify.busy}
+          error={clarify.error}
+        />
+      ) : null}
 
       {personas.length > 0 ? (
         <>
@@ -89,7 +104,7 @@ export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStag
             Continue to Define →
           </button>
         </>
-      ) : (
+      ) : !clarify.questions ? (
         <StageIntroCard
           title="What Empathize produces"
           steps={[
@@ -98,7 +113,7 @@ export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStag
             "Optionally, a colleague's real input attached to a persona (the honest version of collaboration)",
           ]}
         />
-      )}
+      ) : null}
     </div>
   )
 }

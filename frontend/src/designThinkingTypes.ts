@@ -49,6 +49,40 @@ export interface ValidationPlan {
   risk_if_wrong: string
 }
 
+// ---------- Clarify Agent: shared across every stage's primary generation ----------
+// Mirrors backend/app/design_thinking_models.py's clarify shapes and budget
+// constants. Design Thinking has no server-side persistence, so this state
+// lives entirely in each stage component (via useClarifyingGenerate) rather
+// than being tracked by the backend.
+
+export const CLARIFY_ROUND_SIZE = 3
+export const CLARIFY_MAX_ROUNDS = 2
+
+export interface ClarifyQuestion {
+  id: string
+  question: string
+  options: string[]
+  recommended: string | null
+}
+
+export interface AnsweredClarification {
+  question: ClarifyQuestion
+  answer: string
+}
+
+// Each stage's primary generation resolves to one of these -- a
+// status-discriminated union so a caller can `if (result.status ===
+// 'needs_clarification')` and get the right payload narrowed for free.
+export type ClarifyOutcome<TGenerated> =
+  | { status: 'needs_clarification'; questions: ClarifyQuestion[] }
+  | ({ status: 'generated'; questions: ClarifyQuestion[] } & TGenerated)
+
+export type EmpathizeResult = ClarifyOutcome<{ personas: Persona[] }>
+export type DefineResult = ClarifyOutcome<{ problem_statements: ProblemStatement[] }>
+export type IdeateHmwResult = ClarifyOutcome<{ how_might_we: HowMightWe[] }>
+export type PrototypeResult = ClarifyOutcome<{ concept_briefs: ConceptBrief[] }>
+export type TestResult = ClarifyOutcome<{ validation_plans: ValidationPlan[] }>
+
 export interface DesignThinkingSession {
   problem_area: string
   personas: Persona[]
