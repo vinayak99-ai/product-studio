@@ -15,6 +15,7 @@ import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
 import { DocQaPage } from './components/DocQaPage'
 import { JiraPage } from './components/JiraPage'
+import { DeepAnalysisPage } from './components/DeepAnalysisPage'
 import { ExportControls } from './components/ExportControls'
 import { SequenceExportControls } from './components/SequenceExportControls'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -181,6 +182,10 @@ function App() {
 
         <div className={`min-h-0 flex-1 ${activeTool === 'jira' ? 'flex' : 'hidden'}`}>
           <JiraPage />
+        </div>
+
+        <div className={`min-h-0 flex-1 ${activeTool === 'deep_analysis' ? 'flex' : 'hidden'}`}>
+          <DeepAnalysisPage />
         </div>
 
         {comingSoonTool ? <ComingSoonPanel tool={comingSoonTool} /> : null}

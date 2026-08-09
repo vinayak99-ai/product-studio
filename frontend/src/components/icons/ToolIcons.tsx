@@ -92,6 +92,16 @@ export function JiraIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function DeepAnalysisIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <circle cx="10.5" cy="10.5" r="3" strokeDasharray="1.3 1.6" />
+      <path d="M15.2 15.2 21 21" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function DataIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>

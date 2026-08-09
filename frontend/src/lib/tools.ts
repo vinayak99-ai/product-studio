@@ -1,6 +1,7 @@
 import type { ComponentType, SVGProps } from 'react'
 import {
   DataIcon,
+  DeepAnalysisIcon,
   DesignThinkingIcon,
   DocQaIcon,
   FlowchartIcon,
@@ -14,6 +15,7 @@ import {
 export type ToolId =
   | 'design_thinking'
   | 'spec'
+  | 'deep_analysis'
   | 'sequence'
   | 'flowchart'
   | 'infographic'
@@ -46,6 +48,17 @@ export const TOOLS: ToolDef[] = [
     label: 'Spec Builder',
     status: 'ready',
     icon: SpecIcon,
+  },
+  {
+    id: 'deep_analysis',
+    label: 'Deep Analysis',
+    status: 'ready',
+    icon: DeepAnalysisIcon,
+    description:
+      'Paste or upload a document describing a problem and work through an extensive ' +
+      'clarifying interview -- up to 10 questions a round, up to 10 rounds -- to build a ' +
+      'deep, structured analysis: background, prior attempts, root causes, stakeholders, ' +
+      'constraints, and open risks. Not a spec -- a comprehensive hold on the problem itself.',
   },
   {
     id: 'sequence',

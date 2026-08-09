@@ -9,6 +9,7 @@ from app.routes.story import router as story_router
 from app.routes.design_thinking import router as design_thinking_router
 from app.routes.doc_qa import router as doc_qa_router
 from app.routes.jira import router as jira_router
+from app.routes.deep_analysis import router as deep_analysis_router
 from app.spec_builder.main import app as spec_builder_app
 
 settings = get_settings()
@@ -30,6 +31,7 @@ app.include_router(story_router)
 app.include_router(design_thinking_router)
 app.include_router(doc_qa_router)
 app.include_router(jira_router)
+app.include_router(deep_analysis_router)
 
 # Spec Builder's own FastAPI app, routed at /pm/* -- e.g. /pm/projects. It
 # keeps its own CORS middleware (app/spec_builder/main.py), which already
