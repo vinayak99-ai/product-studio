@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/features/spec-builder/lib/api"
 import type { ClarifyQuestion, GeneratedPRD, SpecInput } from "@/features/spec-builder/lib/types"
+import { extractFile } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -37,6 +38,8 @@ export function SourceNotesSection({
   const [dirty, setDirty] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -83,6 +86,23 @@ export function SourceNotesSection({
     const timer = setTimeout(() => void doSave(), 2000)
     return () => clearTimeout(timer)
   }, [dirty, saving, rawNotes, doSave])
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setExtracting(true)
+    setError(null)
+    try {
+      const result = await extractFile(file)
+      setRawNotes(result.text)
+      setDirty(true)
+    } catch (err) {
+      setError(`${err}`)
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   async function handleRegenerate() {
     setRegenerating(true)
@@ -140,10 +160,23 @@ export function SourceNotesSection({
         </p>
       )}
 
-      <p className="text-sm text-muted-foreground">
-        The raw notes behind this spec. Edit them and regenerate to redraft the whole spec from
-        scratch — the current version is kept in Version History, so nothing is lost.
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          The raw notes behind this spec. Edit them and regenerate to redraft the whole spec from
+          scratch — the current version is kept in Version History, so nothing is lost.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          disabled={extracting || loading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {extracting ? "Reading file…" : "Upload .txt/.md"}
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".txt,.md" className="hidden" onChange={handleFileChange} />
+      </div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

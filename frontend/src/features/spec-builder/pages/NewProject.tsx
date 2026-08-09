@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { api } from "@/features/spec-builder/lib/api"
 import type { ClarifyQuestion, GeneratedPRD } from "@/features/spec-builder/lib/types"
+import { extractFile } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -21,8 +22,26 @@ export function NewProject({ onGenerated, onNeedsClarification, onCancel }: NewP
   const [busy, setBusy] = useState(false)
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canSubmit = name.trim().length > 0 && rawNotes.trim().length > 0 && !busy
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setExtracting(true)
+    setError(null)
+    try {
+      const result = await extractFile(file)
+      setRawNotes(result.text)
+    } catch (err) {
+      setError(`${err}`)
+    } finally {
+      setExtracting(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,13 +93,31 @@ export function NewProject({ onGenerated, onNeedsClarification, onCancel }: NewP
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="notes">Raw notes</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="notes">Raw notes</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={extracting}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {extracting ? "Reading file…" : "Upload .txt/.md"}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
               <Textarea
                 id="notes"
                 className="min-h-48"
                 value={rawNotes}
                 onChange={(e) => setRawNotes(e.target.value)}
-                placeholder="We want to speed up checkout, it's too slow and we're losing customers at payment..."
+                placeholder="We want to speed up checkout, it's too slow and we're losing customers at payment... or upload a .txt/.md file above"
               />
               <p className="text-xs text-muted-foreground">
                 Works best with a couple of paragraphs — meeting notes, Slack threads, and braindumps
