@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, HTTPException, Response
 from openai import OpenAIError
 
@@ -190,13 +192,24 @@ async def api_test(request: TestRequest) -> TestResult:
         raise _openai_error(exc) from exc
 
 
+def _export_filename(problem_area: str, extension: str) -> str:
+    """Slugified exploration title, so each export is named after what it
+    actually is instead of every download landing as 'design-thinking.md'.
+    The regex only ever emits [a-z0-9-], which also makes it safe to drop
+    straight into a Content-Disposition header with no further escaping.
+    Mirrors the frontend's slugify() in lib/designThinkingApi.ts -- keep the
+    two in sync if either changes."""
+    slug = re.sub(r"[^a-z0-9]+", "-", problem_area.strip().lower()).strip("-")[:60].rstrip("-")
+    return f"{slug or 'design-thinking'}.{extension}"
+
+
 @router.post("/export")
 def api_export(session: DesignThinkingSession) -> Response:
     markdown = build_design_thinking_markdown(session)
     return Response(
         content=markdown,
         media_type="text/markdown",
-        headers={"Content-Disposition": 'attachment; filename="design-thinking.md"'},
+        headers={"Content-Disposition": f'attachment; filename="{_export_filename(session.problem_area, "md")}"'},
     )
 
 
@@ -206,5 +219,7 @@ def api_export_html(session: DesignThinkingSession) -> Response:
     return Response(
         content=html,
         media_type="text/html",
-        headers={"Content-Disposition": 'attachment; filename="design-thinking.html"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{_export_filename(session.problem_area, "html")}"'
+        },
     )

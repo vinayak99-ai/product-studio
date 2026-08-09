@@ -120,7 +120,23 @@ export function generateValidationPlans(
   })
 }
 
-async function downloadExport(path: string, session: DesignThinkingSession, filename: string): Promise<void> {
+// Mirrors the backend's slugify in routes/design_thinking.py -- keep the two
+// in sync if either changes. The download's actual filename comes from this
+// (the `download` attribute on a blob URL always wins over whatever
+// Content-Disposition the response carried), so the server-side version is
+// only what a direct API caller (not this browser flow) would see.
+function slugify(title: string): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '')
+  return slug || 'design-thinking'
+}
+
+async function downloadExport(path: string, session: DesignThinkingSession, extension: string): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -133,13 +149,13 @@ async function downloadExport(path: string, session: DesignThinkingSession, file
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = `${slugify(session.problem_area)}.${extension}`
   link.click()
   URL.revokeObjectURL(url)
 }
 
 export function exportDesignThinkingMarkdown(session: DesignThinkingSession): Promise<void> {
-  return downloadExport('/api/design-thinking/export', session, 'design-thinking.md')
+  return downloadExport('/api/design-thinking/export', session, 'md')
 }
 
 // Plain semantic HTML (headers, bullets, bold) -- meant to be opened in a
@@ -147,5 +163,5 @@ export function exportDesignThinkingMarkdown(session: DesignThinkingSession): Pr
 // picks up the tags directly rather than needing Markdown syntax cleaned up
 // by hand.
 export function exportDesignThinkingHtml(session: DesignThinkingSession): Promise<void> {
-  return downloadExport('/api/design-thinking/export/html', session, 'design-thinking.html')
+  return downloadExport('/api/design-thinking/export/html', session, 'html')
 }
