@@ -83,13 +83,13 @@ export const TOOLS: ToolDef[] = [
   {
     id: 'jira',
     label: 'Jira',
-    status: 'soon',
+    status: 'ready',
     icon: JiraIcon,
     description:
-      'Connect a Jira project and pull its epics, stories, statuses, sprints, and comments ' +
-      'straight into Product Studio — so a Spec Builder project can be enriched, cross-checked, ' +
-      'and kept in sync against what is actually being delivered.',
-    sharedWith: 'Feeds Spec Builder project enrichment; extends the existing Jira push/import already used there',
+      'Connect a Jira project and pull every epic, story, task, and bug — status, assignee, ' +
+      'priority, sprint, story points — straight into Product Studio, then attach it to a Spec ' +
+      'Builder project to enrich its epics and stories.',
+    sharedWith: 'Feeds Spec Builder project enrichment via the existing Jira import agent',
   },
   {
     id: 'data',

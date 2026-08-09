@@ -5,6 +5,8 @@ import os
 from jira import JIRA
 from jira.exceptions import JIRAError
 
+from app.jira_shared import adf_to_text, discover_field_id
+
 JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL")
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL")
 JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN")
@@ -56,29 +58,6 @@ def _text_to_adf(description: str, bullets: list[str] | None = None) -> dict:
     return {"type": "doc", "version": 1, "content": content}
 
 
-def _adf_to_text(description) -> str:
-    """Flattens an ADF description (or passes through a plain string, for
-    Server/DC instances that may still return one) into readable text."""
-    if not description:
-        return ""
-    if isinstance(description, str):
-        return description
-
-    lines: list[str] = []
-
-    def walk(node):
-        if node.get("type") == "text":
-            lines.append(node.get("text", ""))
-        for child in node.get("content", []) or []:
-            walk(child)
-        if node.get("type") in ("paragraph", "listItem"):
-            lines.append("\n")
-
-    for block in description.get("content", []) or []:
-        walk(block)
-    return "".join(lines).strip()
-
-
 def create_epic(title: str, description: str) -> str:
     client = _client()
     issue = client.create_issue(fields={
@@ -94,11 +73,8 @@ def _discover_epic_link_field_id(client: JIRA) -> str | None:
     global _epic_link_field_id
     if _epic_link_field_id is not None:
         return _epic_link_field_id
-    for field in client.fields():
-        if field.get("name") == "Epic Link":
-            _epic_link_field_id = field["id"]
-            return _epic_link_field_id
-    return None
+    _epic_link_field_id = discover_field_id(client, "Epic Link")
+    return _epic_link_field_id
 
 
 def create_story(title: str, description: str, acceptance_criteria: list[str], epic_key: str) -> str:
@@ -163,7 +139,7 @@ def fetch_project_epics_and_stories() -> tuple[list[dict], list[dict]]:
 
     for issue in issues:
         issuetype = issue.fields.issuetype.name
-        description = _adf_to_text(getattr(issue.fields, "description", None))
+        description = adf_to_text(getattr(issue.fields, "description", None))
 
         if issuetype == "Epic":
             epics[issue.key] = {

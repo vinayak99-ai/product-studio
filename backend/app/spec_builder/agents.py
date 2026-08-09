@@ -751,11 +751,15 @@ def _enriched_epic_story(raw_story: dict, enriched_by_key: dict[str, EnrichedSto
         jira_key=raw_story["key"],
     )
 
-def run_jira_import(prd: GeneratedPRD) -> tuple[list[Epic], list[str]]:
-    from .jira_client import fetch_project_epics_and_stories
-
-    raw_epics, unlinked = fetch_project_epics_and_stories()
-
+def run_jira_import(
+    prd: GeneratedPRD, raw_epics: list[dict], unlinked: list[dict]
+) -> tuple[list[Epic], list[str]]:
+    """Merges already-fetched Jira epics/stories into `prd.epics`. Takes the
+    fetched data rather than pulling it itself, so the same enrichment core
+    can be driven either by Spec Builder's own single env-var-configured
+    connection (spec_builder/jira_client.py, called by the /jira-import
+    route) or by a snapshot already pulled through the standalone Jira tab
+    (routes/jira.py's /attach route)."""
     existing_epic_keys = {e.jira_key for e in prd.epics if e.jira_key}
     existing_story_keys = {s.jira_key for e in prd.epics for s in e.stories if s.jira_key}
 

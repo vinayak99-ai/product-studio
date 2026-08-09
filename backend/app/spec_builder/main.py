@@ -537,7 +537,8 @@ def api_jira_import(project_id: str, artifact_id: str):
         )
 
     try:
-        prd.epics, unmapped_requirements = run_jira_import(prd)
+        raw_epics, unlinked = jira_client.fetch_project_epics_and_stories()
+        prd.epics, unmapped_requirements = run_jira_import(prd, raw_epics, unlinked)
     except OpenAIError as e:
         raise HTTPException(status_code=502, detail=_agent_error_detail(e))
     except Exception as e:
