@@ -12,12 +12,17 @@ export function DesignThinkingPage() {
   const [session, setSession] = useState(EMPTY_SESSION)
   const [activeStage, setActiveStage] = useState<DesignThinkingStage>('empathize')
   const [exportBusy, setExportBusy] = useState(false)
+  // Gates both the Empathize stage's "Continue to Define" button and the
+  // stepper nav below -- a PM has to explicitly review and approve the
+  // generated goals/pains/behaviors before the rest of the flow builds on
+  // them, not just glance at a card grid and click through.
+  const [personasApproved, setPersonasApproved] = useState(false)
 
   const furthestIndex = (() => {
     if (session.concept_briefs.length > 0) return 4
     if (session.concept_sparks.some((s) => s.selected)) return 3
     if (session.problem_statements.length > 0) return 2
-    if (session.personas.length > 0) return 1
+    if (session.personas.length > 0 && personasApproved) return 1
     return 0
   })()
 
@@ -51,8 +56,11 @@ export function DesignThinkingPage() {
       <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-50 p-4">
         {activeStage === 'empathize' ? (
           <EmpathizeStage
+            problemArea={session.problem_area}
             personas={session.personas}
             onChange={(personas) => setSession((s) => ({ ...s, personas }))}
+            approved={personasApproved}
+            onApprovedChange={setPersonasApproved}
             onContinue={() => goToIndex(1)}
           />
         ) : null}

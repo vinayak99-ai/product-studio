@@ -24,12 +24,19 @@ export function StageHeader({
   return (
     <div className="border-b border-neutral-200 bg-white px-4 py-3">
       <div className="flex items-center gap-3">
-        <input
-          value={problemArea}
-          onChange={(e) => onProblemAreaChange(e.target.value)}
-          placeholder="What problem are you exploring?"
-          className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-neutral-900 outline-none placeholder:text-neutral-400"
-        />
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <input
+            value={problemArea}
+            onChange={(e) => onProblemAreaChange(e.target.value)}
+            placeholder="What problem are you exploring? (required)"
+            className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-neutral-900 outline-none placeholder:text-neutral-400"
+          />
+          {!problemArea.trim() ? (
+            <span className="shrink-0 text-sm font-semibold text-red-500" title="A title is required before you can generate personas">
+              *
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onExport}

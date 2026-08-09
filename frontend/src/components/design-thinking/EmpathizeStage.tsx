@@ -7,20 +7,37 @@ import { PersonaCard } from './PersonaCard'
 import { StageIntroCard } from './StageIntroCard'
 
 interface EmpathizeStageProps {
+  problemArea: string
   personas: Persona[]
   onChange: (personas: Persona[]) => void
+  approved: boolean
+  onApprovedChange: (approved: boolean) => void
   onContinue: () => void
 }
 
-export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStageProps) {
+export function EmpathizeStage({
+  problemArea,
+  personas,
+  onChange,
+  approved,
+  onApprovedChange,
+  onContinue,
+}: EmpathizeStageProps) {
   const [material, setMaterial] = useState('')
   const [prompt, setPrompt] = useState('')
   const [preflightError, setPreflightError] = useState<string | null>(null)
 
+  const titleMissing = !problemArea.trim()
+
   const clarify = useClarifyingGenerate<{ personas: Persona[] }>(
     (clarifications, round, forceGenerate) =>
       generatePersonas(material, prompt, clarifications, round, forceGenerate),
-    (result) => onChange(result.personas),
+    (result) => {
+      onChange(result.personas)
+      // Freshly generated content hasn't been reviewed yet -- a prior
+      // approval doesn't carry over to a regenerated set.
+      onApprovedChange(false)
+    },
   )
 
   const handleGenerate = () => {
@@ -66,12 +83,17 @@ export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStag
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={busy}
+            disabled={busy || titleMissing}
             className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? 'Generating…' : personas.length > 0 ? 'Regenerate personas' : 'Generate personas'}
           </button>
         </div>
+        {titleMissing ? (
+          <p className="mt-2 text-xs text-accent">
+            Give this exploration a title above (where it says "What problem are you exploring?") to get started.
+          </p>
+        ) : null}
         {preflightError ? <p className="mt-2 text-xs text-red-600">{preflightError}</p> : null}
       </div>
 
@@ -96,10 +118,25 @@ export function EmpathizeStage({ personas, onChange, onContinue }: EmpathizeStag
               <PersonaCard key={i} persona={persona} onChange={(p) => updatePersona(i, p)} />
             ))}
           </div>
+
+          <label className="flex items-start gap-2 rounded-xl border border-dashed border-neutral-300 bg-white/60 p-3 text-xs font-medium text-neutral-700">
+            <input
+              type="checkbox"
+              checked={approved}
+              onChange={(e) => onApprovedChange(e.target.checked)}
+              className="mt-0.5 shrink-0 accent-primary"
+            />
+            <span>
+              I've reviewed each persona's goals, pains, and behaviors above — they're accurate and
+              ready to carry forward into Define.
+            </span>
+          </label>
+
           <button
             type="button"
             onClick={onContinue}
-            className="self-start rounded-md border border-primary px-4 py-2 text-xs font-semibold text-primary hover:bg-primary-light"
+            disabled={!approved}
+            className="self-start rounded-md border border-primary px-4 py-2 text-xs font-semibold text-primary hover:bg-primary-light disabled:cursor-not-allowed disabled:border-neutral-200 disabled:text-neutral-400 disabled:hover:bg-transparent"
           >
             Continue to Define →
           </button>
