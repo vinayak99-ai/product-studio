@@ -2,6 +2,7 @@ import type { ComponentType, SVGProps } from 'react'
 import {
   DataIcon,
   DesignThinkingIcon,
+  DocQaIcon,
   FlowchartIcon,
   InfographicIcon,
   ReportIcon,
@@ -17,6 +18,7 @@ export type ToolId =
   | 'flowchart'
   | 'infographic'
   | 'story'
+  | 'doc_qa'
   | 'reports'
   | 'data'
 
@@ -68,6 +70,15 @@ export const TOOLS: ToolDef[] = [
     label: 'Story Builder',
     status: 'ready',
     icon: StoryIcon,
+  },
+  {
+    id: 'doc_qa',
+    label: 'Document Q&A',
+    status: 'ready',
+    icon: DocQaIcon,
+    description:
+      'Upload a document and get an instant summary, then ask follow-up questions — every ' +
+      'answer grounded in the document itself, not outside knowledge.',
   },
   {
     id: 'reports',

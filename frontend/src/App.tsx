@@ -13,6 +13,7 @@ import { DeckCanvas } from './components/DeckCanvas'
 import { StorySidebar } from './components/StorySidebar'
 import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
+import { DocQaPage } from './components/DocQaPage'
 import { ExportControls } from './components/ExportControls'
 import { SequenceExportControls } from './components/SequenceExportControls'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -171,6 +172,10 @@ function App() {
             not lose it. */}
         <div className={`min-h-0 flex-1 ${activeTool === 'design_thinking' ? 'flex' : 'hidden'}`}>
           <DesignThinkingPage />
+        </div>
+
+        <div className={`min-h-0 flex-1 ${activeTool === 'doc_qa' ? 'flex' : 'hidden'}`}>
+          <DocQaPage />
         </div>
 
         {comingSoonTool ? <ComingSoonPanel tool={comingSoonTool} /> : null}

@@ -73,6 +73,21 @@ export function DesignThinkingIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function DocQaIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <path d="M7 3h6l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path d="M13 3v4h4" />
+      <path d="M9 12h3" />
+      <path
+        d="M9.5 15.3c0-1.27 1.19-2.3 2.65-2.3h1.7c1.46 0 2.65 1.03 2.65 2.3s-1.19 2.3-2.65 2.3h-.3l-1.3 1.15v-1.22c-1.44-.12-2.75-1.13-2.75-2.23Z"
+        fill="currentColor"
+        fillOpacity="0.12"
+      />
+    </svg>
+  )
+}
+
 export function DataIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
