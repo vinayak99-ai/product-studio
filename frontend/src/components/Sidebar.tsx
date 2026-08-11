@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractFile, openGenerateSocket } from '../lib/api'
-import type { GenerateResponse, ValidationIssue, WsProgressMessage } from '../types'
+import type { DiagramStyle, GenerateResponse, ValidationIssue, WsProgressMessage } from '../types'
 import { IssuesPanel } from './IssuesPanel'
 
 type Status = 'idle' | 'classifying' | 'calling_llm' | 'validating' | 'done' | 'error'
@@ -21,6 +21,7 @@ const STATUS_LABEL: Record<Status, string> = {
 
 export function Sidebar({ onResult, issues }: SidebarProps) {
   const [tab, setTab] = useState<'paste' | 'upload'>('paste')
+  const [diagramStyle, setDiagramStyle] = useState<DiagramStyle>('process')
   const [material, setMaterial] = useState('')
   const [prompt, setPrompt] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
@@ -80,14 +81,45 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
       setErrorMessage('Connection to backend failed. Is the API running?')
     }
 
-    closeSocketRef.current = openGenerateSocket(material, prompt, onMessage, onError)
-  }, [material, prompt, onResult])
+    closeSocketRef.current = openGenerateSocket(material, prompt, onMessage, onError, diagramStyle)
+  }, [material, prompt, diagramStyle, onResult])
 
   const isGenerating =
     status === 'classifying' || status === 'calling_llm' || status === 'validating'
 
   return (
     <aside className="flex h-full w-[360px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-neutral-200 bg-white p-4">
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+          Diagram type
+        </h2>
+        <div className="mt-2 flex gap-1 rounded-lg bg-neutral-100 p-1 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setDiagramStyle('process')}
+            className={`flex-1 rounded-md py-1.5 transition-colors ${
+              diagramStyle === 'process' ? 'bg-white text-primary shadow-sm' : 'text-neutral-600'
+            }`}
+          >
+            Process
+          </button>
+          <button
+            type="button"
+            onClick={() => setDiagramStyle('architecture')}
+            className={`flex-1 rounded-md py-1.5 transition-colors ${
+              diagramStyle === 'architecture' ? 'bg-white text-primary shadow-sm' : 'text-neutral-600'
+            }`}
+          >
+            Architecture
+          </button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-neutral-500">
+          {diagramStyle === 'architecture'
+            ? 'System/ecosystem diagram -- categorized components, databases, external vendors, and a legend, not a step-by-step flow.'
+            : 'Step-by-step process flowchart -- start/end, decisions, and branches.'}
+        </p>
+      </div>
+
       <div>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
           Source material
@@ -133,7 +165,11 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
         <textarea
           value={material}
           onChange={(event) => setMaterial(event.target.value)}
-          placeholder="Paste source material (a process doc, transcript, requirements, etc.)"
+          placeholder={
+            diagramStyle === 'architecture'
+              ? 'Paste source material describing a system or ecosystem (an architecture doc, integration list, data-flow writeup, etc.)'
+              : 'Paste source material (a process doc, transcript, requirements, etc.)'
+          }
           className="mt-3 h-40 w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 outline-none focus:border-primary"
         />
       </div>
@@ -145,7 +181,11 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
-          placeholder="e.g. Map this into a customer onboarding flowchart with decision points."
+          placeholder={
+            diagramStyle === 'architecture'
+              ? "e.g. Map this into a system ecosystem diagram grouped by owning team, with data stores called out."
+              : 'e.g. Map this into a customer onboarding flowchart with decision points.'
+          }
           className="mt-2 h-20 w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 outline-none focus:border-primary"
         />
       </div>
@@ -156,7 +196,7 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
         disabled={isGenerating}
         className="rounded-md bg-primary py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isGenerating ? 'Generating…' : 'Generate flowchart'}
+        {isGenerating ? 'Generating…' : diagramStyle === 'architecture' ? 'Generate diagram' : 'Generate flowchart'}
       </button>
 
       {status !== 'idle' ? (

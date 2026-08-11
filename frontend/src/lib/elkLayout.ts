@@ -85,6 +85,7 @@ function buildLayoutOptions(algorithm: LayoutAlgorithm, direction: LayoutDirecti
 
 export type DiagramNodeData = DiagramNode & {
   groupLabel?: string
+  categoryIndex?: number
   handleDirection?: LayoutDirection
   width?: number
   height?: number
@@ -140,6 +141,11 @@ export async function layoutDiagram(
   const result = await elk.layout(elkGraph)
   const nodesById = new Map(diagram.nodes.map((node) => [node.id, node]))
   const groupsById = new Map(diagram.groups.map((group) => [group.id, group]))
+  // Fixed position in diagram.categories, not a hash of the id -- the same
+  // slot (and so the same color, via getCategoryStyle) every time the same
+  // diagram is laid out, matching the "fixed hue order" rule the legend
+  // itself follows (see theme.ts).
+  const categoryIndexById = new Map(diagram.categories.map((category, index) => [category.id, index]))
 
   // Compact is pinned to a left-to-right flow (see buildLayoutOptions), so
   // its nodes always get left/right handles regardless of whatever direction
@@ -150,6 +156,7 @@ export async function layoutDiagram(
   const nodes: Node<DiagramNodeData, 'diagramNode'>[] = (result.children ?? []).map((child) => {
     const diagramNode = nodesById.get(child.id)!
     const groupLabel = diagramNode.group_id ? groupsById.get(diagramNode.group_id)?.label : undefined
+    const categoryIndex = diagramNode.category_id ? categoryIndexById.get(diagramNode.category_id) : undefined
     const size = sizesById.get(child.id)!
     return {
       id: child.id,
@@ -159,7 +166,7 @@ export async function layoutDiagram(
       // correct immediately, not just after the DOM node is first measured.
       width: size.width,
       height: size.height,
-      data: { ...diagramNode, groupLabel, handleDirection, width: size.width, height: size.height },
+      data: { ...diagramNode, groupLabel, categoryIndex, handleDirection, width: size.width, height: size.height },
       draggable: true,
     }
   })

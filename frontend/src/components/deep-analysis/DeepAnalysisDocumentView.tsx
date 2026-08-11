@@ -123,7 +123,7 @@ export function DeepAnalysisDocumentView({
       <EditableText
         value={document.title}
         onCommit={(title) => updateField('title', title)}
-        as="h1"
+        as="h2"
         className="mb-4 block text-2xl font-semibold text-neutral-900"
       />
 

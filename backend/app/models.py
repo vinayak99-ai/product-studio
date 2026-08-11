@@ -14,6 +14,7 @@ class NodeType(str, Enum):
     decision = "decision"
     io = "io"
     subprocess = "subprocess"
+    database = "database"
 
 
 class EdgeType(str, Enum):
@@ -21,11 +22,25 @@ class EdgeType(str, Enum):
     conditional = "conditional"
 
 
+class DiagramCategory(BaseModel):
+    """A user/LLM-defined legend entry (e.g. an owning domain like "FX" or
+    "Equity") that architecture-mode nodes can be tagged with -- orthogonal
+    to `NodeType`, which encodes shape/kind, not ownership."""
+
+    id: str
+    label: str
+
+
 class DiagramNode(BaseModel):
     id: str
     type: NodeType
     label: str
     group_id: str | None = None
+    category_id: str | None = None
+    # Architecture mode only: renders a small badge (see reference image's
+    # green-dot "External Vendor" marker) -- a flag rather than its own
+    # NodeType, since externality is orthogonal to shape.
+    is_external: bool = False
 
 
 class DiagramEdge(BaseModel):
@@ -45,6 +60,7 @@ class FlowchartDiagram(BaseModel):
     nodes: list[DiagramNode] = Field(default_factory=list)
     edges: list[DiagramEdge] = Field(default_factory=list)
     groups: list[DiagramGroup] = Field(default_factory=list)
+    categories: list[DiagramCategory] = Field(default_factory=list)
 
 
 class ValidationSeverity(str, Enum):
@@ -60,9 +76,15 @@ class ValidationIssue(BaseModel):
     edge_id: str | None = None
 
 
+class DiagramStyle(str, Enum):
+    process = "process"
+    architecture = "architecture"
+
+
 class GenerateRequest(BaseModel):
     material: str
     prompt: str
+    diagram_style: DiagramStyle = DiagramStyle.process
 
 
 class GenerateResponse(BaseModel):

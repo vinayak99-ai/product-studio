@@ -22,6 +22,9 @@ const SHAPE_SIZE_MULTIPLIER: Record<NodeType, { width: number; height: number }>
   subprocess: { width: 1, height: 1 },
   decision: { width: 1.5, height: 1.5 },
   io: { width: 1.25, height: 1 },
+  // Cylinder's curved top/bottom eat into usable interior height the same
+  // way decision/io's diagonal edges eat into theirs.
+  database: { width: 1, height: 1.2 },
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null

@@ -19,6 +19,10 @@ const shapeByNodeType: Record<NodeType, string> = {
   decision: 'flowChartDecision',
   io: 'flowChartInputOutput',
   subprocess: 'flowChartPredefinedProcess',
+  // PowerPoint's basic-shapes cylinder -- a placeholder mapping; sizing it
+  // to actually look like a cylinder (rather than a squashed can) is
+  // Phase 3 export-polish work, not blocking here.
+  database: 'can',
 }
 
 // pptxgenjs wants bare uppercase hex (no '#'); theme palettes store '#rrggbb'.
@@ -38,6 +42,7 @@ function buildNodeStyles(
     decision: { fill: hex(palette.accentLight), line: hex(palette.accent), font: hex(palette.neutral900) },
     io: { fill: hex(palette.primaryLight), line: hex(palette.primary), font: hex(palette.neutral900) },
     subprocess: { fill: 'FFFFFF', line: hex(palette.neutral600), font: hex(palette.neutral900) },
+    database: { fill: 'FFFFFF', line: hex(palette.neutral300), font: hex(palette.neutral900) },
   }
 }
 

@@ -1,11 +1,18 @@
-export type NodeType = 'start' | 'end' | 'process' | 'decision' | 'io' | 'subprocess'
+export type NodeType = 'start' | 'end' | 'process' | 'decision' | 'io' | 'subprocess' | 'database'
 export type EdgeType = 'default' | 'conditional'
+
+export interface DiagramCategory {
+  id: string
+  label: string
+}
 
 export interface DiagramNode {
   id: string
   type: NodeType
   label: string
   group_id?: string | null
+  category_id?: string | null
+  is_external?: boolean
 }
 
 export interface DiagramEdge {
@@ -25,7 +32,10 @@ export interface FlowchartDiagram {
   nodes: DiagramNode[]
   edges: DiagramEdge[]
   groups: DiagramGroup[]
+  categories: DiagramCategory[]
 }
+
+export type DiagramStyle = 'process' | 'architecture'
 
 export type ValidationSeverity = 'error' | 'warning'
 

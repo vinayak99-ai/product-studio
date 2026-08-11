@@ -1,4 +1,4 @@
-import type { ExtractResponse, GenerateResponse, WsProgressMessage } from '../types'
+import type { DiagramStyle, ExtractResponse, GenerateResponse, WsProgressMessage } from '../types'
 import type { SequenceWsProgressMessage } from '../sequenceTypes'
 import type { DeckWsProgressMessage, InfographicDiagram, InfographicWsProgressMessage } from '../infographicTypes'
 
@@ -15,11 +15,15 @@ export async function extractFile(file: File): Promise<ExtractResponse> {
   return res.json()
 }
 
-export async function generateDiagram(material: string, prompt: string): Promise<GenerateResponse> {
+export async function generateDiagram(
+  material: string,
+  prompt: string,
+  diagramStyle: DiagramStyle = 'process',
+): Promise<GenerateResponse> {
   const res = await fetch(`${API_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ material, prompt }),
+    body: JSON.stringify({ material, prompt, diagram_style: diagramStyle }),
   })
   if (!res.ok) {
     throw new Error(await res.text())
@@ -32,11 +36,12 @@ export function openGenerateSocket(
   prompt: string,
   onMessage: (message: WsProgressMessage) => void,
   onError: () => void,
+  diagramStyle: DiagramStyle = 'process',
 ): () => void {
   const socket = new WebSocket(`${WS_BASE}/api/ws/generate`)
 
   socket.onopen = () => {
-    socket.send(JSON.stringify({ material, prompt }))
+    socket.send(JSON.stringify({ material, prompt, diagram_style: diagramStyle }))
   }
   socket.onmessage = (event) => {
     onMessage(JSON.parse(event.data) as WsProgressMessage)
