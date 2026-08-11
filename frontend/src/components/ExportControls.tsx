@@ -31,15 +31,15 @@ export function ExportControls({ targetRef, disabled, layoutAlgorithm, themeName
       } else if (kind === 'pdf' && handle.domNode) {
         await exportPdf(handle.domNode)
       } else if (kind === 'pptx') {
-        const { nodes, edges } = handle.getFlow()
-        // Group-container boxes are a real DOM element (so PNG/PDF, which
-        // just screenshot handle.domNode, already show them for free) but
-        // aren't a shape exportPptx knows how to draw yet -- see Phase 3 of
-        // the architecture-diagram plan. Filter them out rather than let a
-        // 'groupBox' node reach exportPptx's NodeType-keyed shape/color
-        // lookups, which only cover real diagram node types.
+        const { nodes, edges, groupBoxes, categories } = handle.getFlow()
+        // Group-container boxes ride as their own pseudo-node kind in the
+        // canvas's node array (a real DOM element, so PNG/PDF -- which just
+        // screenshot handle.domNode -- already show them for free); filter
+        // them out here since exportPptx draws real group rectangles from
+        // the separate `groupBoxes` array instead, and its NodeType-keyed
+        // shape/color lookups only cover real diagram node types.
         const diagramNodes = nodes.filter(isDiagramNode)
-        await exportPptx(diagramNodes, edges, themePalettes[themeName])
+        await exportPptx(diagramNodes, edges, groupBoxes, categories, themePalettes[themeName])
       }
     } finally {
       setBusy(null)

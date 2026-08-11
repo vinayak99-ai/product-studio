@@ -1,12 +1,20 @@
 import { useCallback, useState } from 'react'
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { getCategoryStyle, nodeTheme } from '../../lib/theme'
+import { Handle, NodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react'
+import { getCategoryStyle, nodeTheme, nodeTypeLabels } from '../../lib/theme'
 import { NODE_WIDTH, NODE_HEIGHT, type DiagramNodeData } from '../../lib/elkLayout'
+import type { NodeType } from '../../types'
 
-export type DiagramFlowNode = Node<
-  DiagramNodeData & { onLabelChange?: (id: string, label: string) => void },
-  'diagramNode'
->
+export type DiagramNodeCallbacks = {
+  onLabelChange?: (id: string, label: string) => void
+  onTypeChange?: (id: string, type: NodeType) => void
+  onCategoryChange?: (id: string, categoryId: string | null) => void
+  onExternalToggle?: (id: string, isExternal: boolean) => void
+  onDelete?: (id: string) => void
+}
+
+export type DiagramFlowNode = Node<DiagramNodeData & DiagramNodeCallbacks, 'diagramNode'>
+
+const ALL_NODE_TYPES = Object.keys(nodeTypeLabels) as NodeType[]
 
 export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFlowNode>) {
   const [isEditing, setIsEditing] = useState(false)
@@ -83,6 +91,66 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
     </>
   )
 
+  // Manual authoring on top of whatever the LLM generated -- reassign type/
+  // category, toggle the external badge, or delete, without a full
+  // regenerate. Only category_id has options to pick from when the diagram
+  // actually has a category legend (architecture mode); process-mode
+  // diagrams just don't render that select.
+  const categories = data.categories ?? []
+  const toolbar = (
+    <NodeToolbar isVisible={selected} position={Position.Top} offset={10}>
+      <div
+        className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1 shadow-md"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <select
+          value={data.type}
+          onChange={(event) => data.onTypeChange?.(id, event.target.value as NodeType)}
+          className="rounded border border-neutral-200 bg-white px-1.5 py-1 text-[11px] text-neutral-700 outline-none"
+        >
+          {ALL_NODE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {nodeTypeLabels[type]}
+            </option>
+          ))}
+        </select>
+        {categories.length > 0 ? (
+          <select
+            value={data.category_id ?? ''}
+            onChange={(event) => data.onCategoryChange?.(id, event.target.value || null)}
+            className="rounded border border-neutral-200 bg-white px-1.5 py-1 text-[11px] text-neutral-700 outline-none"
+          >
+            <option value="">No category</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => data.onExternalToggle?.(id, !data.is_external)}
+          aria-pressed={!!data.is_external}
+          title="Toggle external vendor"
+          className={`rounded border px-1.5 py-1 text-[11px] font-medium ${
+            data.is_external ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-neutral-200 text-neutral-500'
+          }`}
+        >
+          Ext
+        </button>
+        <button
+          type="button"
+          onClick={() => data.onDelete?.(id)}
+          title="Delete node"
+          className="rounded border border-red-200 px-1.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+        >
+          Delete
+        </button>
+      </div>
+    </NodeToolbar>
+  )
+
   // Sized per-label (see lib/nodeSizing.ts) instead of every node getting an
   // identical fixed box regardless of how much text it holds.
   const width = data.width ?? NODE_WIDTH
@@ -99,6 +167,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
         />
         <div className="relative flex h-full w-full items-center justify-center px-7">{labelContent}</div>
         {handles}
+        {toolbar}
       </div>
     )
   }
@@ -110,6 +179,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
         <div className={`absolute inset-0 -skew-x-12 rounded-sm ${style.container}`} style={categoryColorStyle} />
         <div className="relative flex h-full w-full items-center justify-center">{labelContent}</div>
         {handles}
+        {toolbar}
       </div>
     )
   }
@@ -125,6 +195,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
         <div className="pointer-events-none absolute inset-y-0 right-1.5 w-px bg-neutral-600" />
         {labelContent}
         {handles}
+        {toolbar}
       </div>
     )
   }
@@ -157,6 +228,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
           {labelContent}
         </div>
         {handles}
+        {toolbar}
       </div>
     )
   }
@@ -171,6 +243,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
       {externalBadge}
       {labelContent}
       {handles}
+      {toolbar}
     </div>
   )
 }

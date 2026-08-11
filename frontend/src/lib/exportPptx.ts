@@ -1,7 +1,8 @@
 import pptxgen from 'pptxgenjs'
-import { NODE_HEIGHT, NODE_WIDTH } from './elkLayout'
+import { NODE_HEIGHT, NODE_WIDTH, type GroupBox } from './elkLayout'
+import { getCategoryStyle } from './theme'
 import type { DiagramPalette } from './themes'
-import type { EdgeType, NodeType } from '../types'
+import type { DiagramCategory, EdgeType, NodeType } from '../types'
 import type { DiagramFlowNode } from '../components/nodes/DiagramNodeComponent'
 import type { DiagramFlowEdge } from '../components/edges/DiagramEdgeComponent'
 
@@ -78,9 +79,22 @@ export interface ExportPptxOptions {
   fileName?: string
 }
 
+const LEGEND_ROW_HEIGHT_IN = 0.26
+const LEGEND_CHIP_GAP_IN = 0.22
+const LEGEND_DOT_SIZE_IN = 0.1
+
+// Rough per-character width estimate at the legend's font size -- exact
+// text measurement isn't available outside a DOM, and this only needs to
+// be close enough to decide when a chip should wrap to the next row.
+function estimateChipWidth(label: string): number {
+  return LEGEND_DOT_SIZE_IN + 0.08 + label.length * 0.075 + LEGEND_CHIP_GAP_IN
+}
+
 export async function exportPptx(
   nodes: DiagramFlowNode[],
   edges: DiagramFlowEdge[],
+  groupBoxes: GroupBox[],
+  categories: DiagramCategory[],
   palette: DiagramPalette,
   options: ExportPptxOptions = {},
 ): Promise<void> {
@@ -118,7 +132,25 @@ export async function exportPptx(
   const contentX = MARGIN_IN
   const contentY = MARGIN_IN + TITLE_HEIGHT_IN
   const contentW = SLIDE_WIDTH_IN - MARGIN_IN * 2
-  const contentH = SLIDE_HEIGHT_IN - contentY - MARGIN_IN
+
+  // Reserves a footer strip for the category legend (wrapping to a second
+  // row if there isn't room for every chip on one line) so the diagram
+  // itself is scaled to leave that space rather than overlapping it.
+  let legendRows = 0
+  if (categories.length > 0) {
+    legendRows = 1
+    let cursorW = 0
+    for (const category of categories) {
+      const chipW = estimateChipWidth(category.label)
+      if (cursorW + chipW > contentW && cursorW > 0) {
+        legendRows += 1
+        cursorW = 0
+      }
+      cursorW += chipW
+    }
+  }
+  const legendHeight = legendRows > 0 ? legendRows * LEGEND_ROW_HEIGHT_IN + 0.1 : 0
+  const contentH = SLIDE_HEIGHT_IN - contentY - MARGIN_IN - legendHeight
 
   // Each node is sized to fit its own label (lib/nodeSizing.ts) rather than
   // a fixed box, so the deck has to read each node's actual width/height
@@ -127,10 +159,19 @@ export async function exportPptx(
   const nodeWidth = (node: DiagramFlowNode) => node.data.width ?? node.width ?? NODE_WIDTH
   const nodeHeight = (node: DiagramFlowNode) => node.data.height ?? node.height ?? NODE_HEIGHT
 
-  const minX = Math.min(...nodes.map((node) => node.position.x))
-  const minY = Math.min(...nodes.map((node) => node.position.y))
-  const maxX = Math.max(...nodes.map((node) => node.position.x + nodeWidth(node)))
-  const maxY = Math.max(...nodes.map((node) => node.position.y + nodeHeight(node)))
+  // Group box extents count toward the layout bounds too -- their padding
+  // reaches slightly beyond their tightest-fit member nodes, so leaving
+  // them out would let a group's border clip against the slide edge.
+  const minX = Math.min(...nodes.map((node) => node.position.x), ...groupBoxes.map((box) => box.x))
+  const minY = Math.min(...nodes.map((node) => node.position.y), ...groupBoxes.map((box) => box.y))
+  const maxX = Math.max(
+    ...nodes.map((node) => node.position.x + nodeWidth(node)),
+    ...groupBoxes.map((box) => box.x + box.width),
+  )
+  const maxY = Math.max(
+    ...nodes.map((node) => node.position.y + nodeHeight(node)),
+    ...groupBoxes.map((box) => box.y + box.height),
+  )
   const layoutW = Math.max(maxX - minX, 1)
   const layoutH = Math.max(maxY - minY, 1)
 
@@ -145,6 +186,32 @@ export async function exportPptx(
       y: offsetY + (node.position.y - minY) * scale,
       w: nodeWidth(node) * scale,
       h: nodeHeight(node) * scale,
+    })
+  }
+
+  // Group boxes first so they sit behind both edges and node shapes, same
+  // stacking order as GroupBoxComponent's zIndex -1 on screen.
+  const categoryIndexById = new Map(categories.map((category, index) => [category.id, index]))
+  for (const box of groupBoxes) {
+    slide.addShape('roundRect', {
+      x: offsetX + (box.x - minX) * scale,
+      y: offsetY + (box.y - minY) * scale,
+      w: box.width * scale,
+      h: box.height * scale,
+      rectRadius: 0.08,
+      fill: { type: 'none' },
+      line: { color: hex(palette.neutral300), width: 1, dashType: 'dash' },
+    })
+    slide.addText(box.label.toUpperCase(), {
+      x: offsetX + (box.x - minX) * scale + 0.1,
+      y: offsetY + (box.y - minY) * scale - 0.14,
+      w: Math.max(box.width * scale - 0.2, 0.5),
+      h: 0.22,
+      fontFace: 'Calibri',
+      fontSize: 8,
+      bold: true,
+      color: hex(palette.neutral600),
+      fill: { color: hex(palette.neutral50) },
     })
   }
 
@@ -198,7 +265,14 @@ export async function exportPptx(
 
   for (const node of nodes) {
     const box = boxes.get(node.id)!
-    const style = nodeStyles[node.data.type]
+    const baseStyle = nodeStyles[node.data.type]
+    // Same override as the on-screen node: a category, when set, replaces
+    // the static per-type palette rather than layering on top of it.
+    const categoryIndex = node.data.category_id ? categoryIndexById.get(node.data.category_id) : undefined
+    const categoryStyle = categoryIndex !== undefined ? getCategoryStyle(categoryIndex) : null
+    const style = categoryStyle
+      ? { fill: hex(categoryStyle.fill), line: hex(categoryStyle.border), font: hex(categoryStyle.text), bold: baseStyle.bold }
+      : baseStyle
 
     slide.addShape(shapeByNodeType[node.data.type] as 'rect', {
       x: box.x,
@@ -222,6 +296,52 @@ export async function exportPptx(
       wrap: true,
       shrinkText: true,
     })
+    if (node.data.is_external) {
+      slide.addShape('ellipse', {
+        x: box.x + box.w - 0.1,
+        y: box.y - 0.05,
+        w: 0.12,
+        h: 0.12,
+        fill: { color: '10B981' },
+        line: { color: 'FFFFFF', width: 1.5 },
+      })
+    }
+  }
+
+  // Category legend footer -- same fixed hue-order chips as the on-screen
+  // DiagramLegend, wrapped across rows using the same estimate the layout
+  // pass above used to reserve space.
+  if (categories.length > 0) {
+    let cursorX = contentX
+    let rowY = SLIDE_HEIGHT_IN - MARGIN_IN - legendHeight + 0.08
+    for (const category of categories) {
+      const chipW = estimateChipWidth(category.label)
+      if (cursorX + chipW > contentX + contentW && cursorX > contentX) {
+        rowY += LEGEND_ROW_HEIGHT_IN
+        cursorX = contentX
+      }
+      const index = categoryIndexById.get(category.id)!
+      const style = getCategoryStyle(index)
+      slide.addShape('ellipse', {
+        x: cursorX,
+        y: rowY + (LEGEND_ROW_HEIGHT_IN - LEGEND_DOT_SIZE_IN) / 2,
+        w: LEGEND_DOT_SIZE_IN,
+        h: LEGEND_DOT_SIZE_IN,
+        fill: { color: hex(style.border) },
+        line: { type: 'none' },
+      })
+      slide.addText(category.label, {
+        x: cursorX + LEGEND_DOT_SIZE_IN + 0.06,
+        y: rowY,
+        w: chipW,
+        h: LEGEND_ROW_HEIGHT_IN,
+        fontFace: 'Calibri',
+        fontSize: 9,
+        color: hex(palette.neutral600),
+        valign: 'middle',
+      })
+      cursorX += chipW
+    }
   }
 
   await pptx.writeFile({ fileName: options.fileName ?? 'flowchart.pptx' })

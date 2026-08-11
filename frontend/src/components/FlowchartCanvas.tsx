@@ -1,10 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState } from '@xyflow/react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { Background, Controls, MiniMap, Panel, ReactFlow, useEdgesState, useNodesState } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { layoutDiagram, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
+import { layoutDiagram, type GroupBox, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
+import { measureNodeSize } from '../lib/nodeSizing'
 import type { EdgeShape } from '../lib/theme'
 import { themePalettes, type ThemeName } from '../lib/themes'
-import type { FlowchartDiagram } from '../types'
+import type { DiagramCategory, FlowchartDiagram, NodeType } from '../types'
 import { DiagramNodeComponent, type DiagramFlowNode } from './nodes/DiagramNodeComponent'
 import { GroupBoxComponent, type GroupBoxFlowNode } from './nodes/GroupBoxComponent'
 import { DiagramEdgeComponent, type DiagramFlowEdge } from './edges/DiagramEdgeComponent'
@@ -28,56 +29,162 @@ export type CanvasFlowNode = DiagramFlowNode | GroupBoxFlowNode
 
 export interface FlowchartCanvasHandle {
   domNode: HTMLDivElement | null
-  getFlow: () => { nodes: CanvasFlowNode[]; edges: DiagramFlowEdge[] }
+  getFlow: () => { nodes: CanvasFlowNode[]; edges: DiagramFlowEdge[]; groupBoxes: GroupBox[]; categories: DiagramCategory[] }
 }
 
 const nodeTypes = { diagramNode: DiagramNodeComponent, groupBox: GroupBoxComponent }
 const edgeTypes = { diagramEdge: DiagramEdgeComponent }
 const SNAP_GRID: [number, number] = [16, 16]
 const GROUP_NODE_ID_PREFIX = 'grp:'
+const DEFAULT_NODE_SPACING = 48
 
 export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvasProps>(
   ({ diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([])
     const [edges, setEdges, onEdgesChange] = useEdgesState<DiagramFlowEdge>([])
+    const [groupBoxes, setGroupBoxes] = useState<GroupBox[]>([])
 
     useImperativeHandle(
       ref,
       () => ({
         domNode: containerRef.current,
-        getFlow: () => ({ nodes, edges }),
+        getFlow: () => ({ nodes, edges, groupBoxes, categories: diagram?.categories ?? [] }),
       }),
-      [nodes, edges],
+      [nodes, edges, groupBoxes, diagram],
     )
+
+    // Stable across renders (setNodes/setEdges never change identity), so
+    // every node -- generated or manually added later via handleAddNode --
+    // can share the exact same callback instances instead of each layout
+    // pass minting fresh ones.
+    const handleLabelChange = useCallback(
+      (id: string, label: string) => {
+        setNodes((current) =>
+          current.map((n) => (n.type === 'diagramNode' && n.id === id ? { ...n, data: { ...n.data, label } } : n)),
+        )
+      },
+      [setNodes],
+    )
+
+    const handleTypeChange = useCallback(
+      (id: string, type: NodeType) => {
+        setNodes((current) =>
+          current.map((n) => {
+            if (n.type !== 'diagramNode' || n.id !== id) return n
+            const size = measureNodeSize(n.data.label, type)
+            return { ...n, width: size.width, height: size.height, data: { ...n.data, type, width: size.width, height: size.height } }
+          }),
+        )
+      },
+      [setNodes],
+    )
+
+    const handleCategoryChange = useCallback(
+      (id: string, categoryId: string | null) => {
+        setNodes((current) =>
+          current.map((n) => {
+            if (n.type !== 'diagramNode' || n.id !== id) return n
+            const categories = n.data.categories ?? []
+            const index = categoryId ? categories.findIndex((category) => category.id === categoryId) : -1
+            return { ...n, data: { ...n.data, category_id: categoryId, categoryIndex: index === -1 ? undefined : index } }
+          }),
+        )
+      },
+      [setNodes],
+    )
+
+    const handleExternalToggle = useCallback(
+      (id: string, isExternal: boolean) => {
+        setNodes((current) =>
+          current.map((n) => (n.type === 'diagramNode' && n.id === id ? { ...n, data: { ...n.data, is_external: isExternal } } : n)),
+        )
+      },
+      [setNodes],
+    )
+
+    const handleDeleteNode = useCallback(
+      (id: string) => {
+        setNodes((current) => current.filter((n) => n.id !== id))
+        setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id))
+      },
+      [setNodes, setEdges],
+    )
+
+    const handleAddNode = useCallback(() => {
+      const newId = `manual_${Math.random().toString(36).slice(2, 9)}`
+      const size = measureNodeSize('New node', 'process')
+      setNodes((current) => {
+        const diagramNodes = current.filter((n): n is DiagramFlowNode => n.type === 'diagramNode')
+        // Drops below the current lowest node (or near the origin if the
+        // canvas is otherwise empty) so it lands in visible empty space
+        // instead of stacked exactly on top of something -- there's no
+        // "click an empty spot to place it" gesture here, just a button.
+        const maxY =
+          diagramNodes.length > 0
+            ? Math.max(...diagramNodes.map((n) => n.position.y + (n.data.height ?? size.height)))
+            : 0
+        const minX = diagramNodes.length > 0 ? Math.min(...diagramNodes.map((n) => n.position.x)) : 0
+        const newNode: DiagramFlowNode = {
+          id: newId,
+          type: 'diagramNode',
+          position: { x: minX, y: maxY + DEFAULT_NODE_SPACING },
+          width: size.width,
+          height: size.height,
+          selected: true,
+          data: {
+            id: newId,
+            type: 'process',
+            label: 'New node',
+            group_id: null,
+            category_id: null,
+            is_external: false,
+            categories: diagram?.categories,
+            width: size.width,
+            height: size.height,
+            onLabelChange: handleLabelChange,
+            onTypeChange: handleTypeChange,
+            onCategoryChange: handleCategoryChange,
+            onExternalToggle: handleExternalToggle,
+            onDelete: handleDeleteNode,
+          },
+          draggable: true,
+        }
+        // Deselects everything else so only the just-added node's toolbar
+        // is showing -- otherwise a previously-selected node's toolbar
+        // would stay open alongside the new one.
+        return [...current.map((n) => ({ ...n, selected: false })), newNode]
+      })
+    }, [diagram, setNodes, handleLabelChange, handleTypeChange, handleCategoryChange, handleExternalToggle, handleDeleteNode])
 
     // Recomputes positions — only needed when the diagram or layout geometry changes.
     useEffect(() => {
       if (!diagram || diagram.nodes.length === 0) {
         setNodes([])
         setEdges([])
+        setGroupBoxes([])
         return
       }
 
       let cancelled = false
-      layoutDiagram(diagram, layoutAlgorithm, layoutDirection).then(({ nodes: laidOutNodes, edges: laidOutEdges, groupBoxes }) => {
+      layoutDiagram(diagram, layoutAlgorithm, layoutDirection).then(({ nodes: laidOutNodes, edges: laidOutEdges, groupBoxes: laidOutGroupBoxes }) => {
         if (cancelled) return
         const withCallbacks: DiagramFlowNode[] = laidOutNodes.map((node) => ({
           ...node,
           data: {
             ...node.data,
-            onLabelChange: (id: string, label: string) => {
-              setNodes((current) =>
-                current.map((n) => (n.type === 'diagramNode' && n.id === id ? { ...n, data: { ...n.data, label } } : n)),
-              )
-            },
+            onLabelChange: handleLabelChange,
+            onTypeChange: handleTypeChange,
+            onCategoryChange: handleCategoryChange,
+            onExternalToggle: handleExternalToggle,
+            onDelete: handleDeleteNode,
           },
         }))
         // Group boxes go first in the array (React Flow renders later nodes
         // on top) and are explicitly non-interactive -- purely a visual
         // container, never draggable/selectable/connectable itself, so
         // dragging or clicking a member node underneath always wins.
-        const groupBoxNodes: GroupBoxFlowNode[] = groupBoxes.map((box) => ({
+        const groupBoxNodes: GroupBoxFlowNode[] = laidOutGroupBoxes.map((box) => ({
           id: GROUP_NODE_ID_PREFIX + box.id,
           type: 'groupBox',
           position: { x: box.x, y: box.y },
@@ -90,6 +197,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
           zIndex: -1,
         }))
         setNodes([...groupBoxNodes, ...withCallbacks])
+        setGroupBoxes(laidOutGroupBoxes)
         setEdges(
           laidOutEdges.map((edge) => ({
             ...edge,
@@ -162,6 +270,15 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
               maskColor="rgba(237, 239, 236, 0.6)"
               className="!border !border-neutral-200"
             />
+            <Panel position="top-left">
+              <button
+                type="button"
+                onClick={handleAddNode}
+                className="rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-900 shadow-sm transition-colors hover:border-primary hover:text-primary"
+              >
+                + Add node
+              </button>
+            </Panel>
           </ReactFlow>
         )}
       </div>

@@ -1,6 +1,6 @@
 import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js'
 import type { Edge, Node } from '@xyflow/react'
-import type { DiagramEdge, DiagramNode, FlowchartDiagram } from '../types'
+import type { DiagramCategory, DiagramEdge, DiagramNode, FlowchartDiagram } from '../types'
 import { routeEdgesOnGrid } from './gridRouter'
 import { measureNodeSize, BASE_HEIGHT } from './nodeSizing'
 
@@ -85,6 +85,11 @@ function buildLayoutOptions(algorithm: LayoutAlgorithm, direction: LayoutDirecti
 
 export type DiagramNodeData = DiagramNode & {
   categoryIndex?: number
+  // The diagram's full category legend, not just this node's own slot --
+  // lets the node's selection toolbar (DiagramNodeComponent) offer every
+  // category as a reassignment option without prop-drilling the diagram
+  // itself down through React Flow's node data.
+  categories?: DiagramCategory[]
   handleDirection?: LayoutDirection
   width?: number
   height?: number
@@ -273,7 +278,7 @@ export async function layoutDiagram(
       // correct immediately, not just after the DOM node is first measured.
       width: leaf.width,
       height: leaf.height,
-      data: { ...diagramNode, categoryIndex, handleDirection, width: leaf.width, height: leaf.height },
+      data: { ...diagramNode, categoryIndex, categories: diagram.categories, handleDirection, width: leaf.width, height: leaf.height },
       draggable: true,
     }
   })
