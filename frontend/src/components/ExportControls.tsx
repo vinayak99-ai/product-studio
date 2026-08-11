@@ -3,7 +3,12 @@ import { exportPdf, exportPng } from '../lib/export'
 import { exportPptx } from '../lib/exportPptx'
 import type { LayoutAlgorithm } from '../lib/elkLayout'
 import { themePalettes, type ThemeName } from '../lib/themes'
-import type { FlowchartCanvasHandle } from './FlowchartCanvas'
+import type { CanvasFlowNode, FlowchartCanvasHandle } from './FlowchartCanvas'
+import type { DiagramFlowNode } from './nodes/DiagramNodeComponent'
+
+function isDiagramNode(node: CanvasFlowNode): node is DiagramFlowNode {
+  return node.type === 'diagramNode'
+}
 
 interface ExportControlsProps {
   targetRef: RefObject<FlowchartCanvasHandle | null>
@@ -27,7 +32,14 @@ export function ExportControls({ targetRef, disabled, layoutAlgorithm, themeName
         await exportPdf(handle.domNode)
       } else if (kind === 'pptx') {
         const { nodes, edges } = handle.getFlow()
-        await exportPptx(nodes, edges, themePalettes[themeName])
+        // Group-container boxes are a real DOM element (so PNG/PDF, which
+        // just screenshot handle.domNode, already show them for free) but
+        // aren't a shape exportPptx knows how to draw yet -- see Phase 3 of
+        // the architecture-diagram plan. Filter them out rather than let a
+        // 'groupBox' node reach exportPptx's NodeType-keyed shape/color
+        // lookups, which only cover real diagram node types.
+        const diagramNodes = nodes.filter(isDiagramNode)
+        await exportPptx(diagramNodes, edges, themePalettes[themeName])
       }
     } finally {
       setBusy(null)

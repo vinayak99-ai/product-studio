@@ -84,7 +84,6 @@ function buildLayoutOptions(algorithm: LayoutAlgorithm, direction: LayoutDirecti
 }
 
 export type DiagramNodeData = DiagramNode & {
-  groupLabel?: string
   categoryIndex?: number
   handleDirection?: LayoutDirection
   width?: number
@@ -103,6 +102,15 @@ export interface Box {
   height: number
 }
 
+export interface GroupBox {
+  id: string
+  label: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export type DiagramEdgeData = {
   type: string
   waypoints?: Waypoint[]
@@ -113,34 +121,86 @@ export type DiagramEdgeData = {
   nodeBoxes?: Box[]
 }
 
+// ELK node ids for group containers are prefixed to keep them out of the
+// same id-space as real diagram nodes (LLM-generated slugs never contain a
+// colon) -- lets the post-layout walk tell "this child is a group
+// container" apart from "this child is a leaf node" by id alone.
+const GROUP_NODE_PREFIX = 'grp:'
+
+// Reserves room at the top of a group's interior for the title pill
+// GroupBoxComponent renders, plus a little breathing room on every side so
+// member nodes never touch the border.
+const GROUP_PADDING = '[top=40.0,left=18.0,bottom=18.0,right=18.0]'
+
 export async function layoutDiagram(
   diagram: FlowchartDiagram,
   algorithm: LayoutAlgorithm = 'layered',
   direction: LayoutDirection = 'DOWN',
-): Promise<{ nodes: Node<DiagramNodeData, 'diagramNode'>[]; edges: Edge<DiagramEdgeData, 'diagramEdge'>[] }> {
+): Promise<{
+  nodes: Node<DiagramNodeData, 'diagramNode'>[]
+  edges: Edge<DiagramEdgeData, 'diagramEdge'>[]
+  groupBoxes: GroupBox[]
+}> {
   const sizesById = new Map(diagram.nodes.map((node) => [node.id, measureNodeSize(node.label, node.type)]))
+  const groupsById = new Map(diagram.groups.map((group) => [group.id, group]))
+
+  // A node's group only counts if it resolves to a real, declared group --
+  // validate_diagram() already flags a dangling group_id as a warning
+  // (unknown_group), so this treats that case the same as ungrouped rather
+  // than crashing on a missing lookup.
+  const groupIdOf = (node: DiagramNode): string | null =>
+    node.group_id && groupsById.has(node.group_id) ? node.group_id : null
+
+  const leafElkNode = (node: DiagramNode): ElkNode => {
+    const size = sizesById.get(node.id)!
+    return { id: node.id, width: size.width, height: size.height }
+  }
+
+  const ungroupedNodes = diagram.nodes.filter((node) => groupIdOf(node) === null)
+  const groupedNodesByGroupId = new Map<string, DiagramNode[]>()
+  for (const node of diagram.nodes) {
+    const groupId = groupIdOf(node)
+    if (!groupId) continue
+    const bucket = groupedNodesByGroupId.get(groupId)
+    if (bucket) bucket.push(node)
+    else groupedNodesByGroupId.set(groupId, [node])
+  }
+
+  // Edges must live in the `edges` list of the lowest common ancestor of
+  // their two endpoints (ELK's own hierarchical-layout requirement) -- same
+  // group on both ends -> that group's own list; anything else (different
+  // groups, or either endpoint ungrouped) -> the root's list.
+  const rootEdges: ElkNode['edges'] = []
+  const groupEdgesByGroupId = new Map<string, NonNullable<ElkNode['edges']>>()
+  for (const edge of diagram.edges) {
+    const sourceGroup = groupIdOf(diagram.nodes.find((n) => n.id === edge.source)!)
+    const targetGroup = groupIdOf(diagram.nodes.find((n) => n.id === edge.target)!)
+    const elkEdge = { id: edge.id, sources: [edge.source], targets: [edge.target] }
+    if (sourceGroup && sourceGroup === targetGroup) {
+      const bucket = groupEdgesByGroupId.get(sourceGroup)
+      if (bucket) bucket.push(elkEdge)
+      else groupEdgesByGroupId.set(sourceGroup, [elkEdge])
+    } else {
+      rootEdges.push(elkEdge)
+    }
+  }
+
+  const groupChildren: ElkNode[] = Array.from(groupedNodesByGroupId.entries()).map(([groupId, members]) => ({
+    id: GROUP_NODE_PREFIX + groupId,
+    layoutOptions: { 'elk.padding': GROUP_PADDING },
+    children: members.map(leafElkNode),
+    edges: groupEdgesByGroupId.get(groupId) ?? [],
+  }))
 
   const elkGraph: ElkNode = {
     id: 'root',
     layoutOptions: buildLayoutOptions(algorithm, direction),
-    children: diagram.nodes.map((node) => {
-      const size = sizesById.get(node.id)!
-      return {
-        id: node.id,
-        width: size.width,
-        height: size.height,
-      }
-    }),
-    edges: diagram.edges.map((edge) => ({
-      id: edge.id,
-      sources: [edge.source],
-      targets: [edge.target],
-    })),
+    children: [...ungroupedNodes.map(leafElkNode), ...groupChildren],
+    edges: rootEdges,
   }
 
   const result = await elk.layout(elkGraph)
   const nodesById = new Map(diagram.nodes.map((node) => [node.id, node]))
-  const groupsById = new Map(diagram.groups.map((group) => [group.id, group]))
   // Fixed position in diagram.categories, not a hash of the id -- the same
   // slot (and so the same color, via getCategoryStyle) every time the same
   // diagram is laid out, matching the "fixed hue order" rule the legend
@@ -153,20 +213,67 @@ export async function layoutDiagram(
   const handleDirection: LayoutDirection | undefined =
     algorithm === 'rectpacking' ? 'RIGHT' : DIRECTION_SUPPORTED[algorithm] ? direction : undefined
 
-  const nodes: Node<DiagramNodeData, 'diagramNode'>[] = (result.children ?? []).map((child) => {
-    const diagramNode = nodesById.get(child.id)!
-    const groupLabel = diagramNode.group_id ? groupsById.get(diagramNode.group_id)?.label : undefined
+  // ELK gives every node's x/y relative to its own parent, not the graph --
+  // a group's members are relative to THAT group's origin, not absolute
+  // canvas coordinates. Walk the (at most 2-level) tree once, adding each
+  // group's own resolved offset onto its members, so everything downstream
+  // (React Flow positions, edge-label clearance boxes, the grid-routing
+  // fallback) can keep working with plain absolute coordinates exactly as
+  // it did before groups existed.
+  interface FlatLeaf {
+    id: string
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  const flatLeaves: FlatLeaf[] = []
+  const groupBoxes: GroupBox[] = []
+  for (const child of result.children ?? []) {
+    if (child.id.startsWith(GROUP_NODE_PREFIX)) {
+      const groupId = child.id.slice(GROUP_NODE_PREFIX.length)
+      const gx = child.x ?? 0
+      const gy = child.y ?? 0
+      groupBoxes.push({
+        id: groupId,
+        label: groupsById.get(groupId)!.label,
+        x: gx,
+        y: gy,
+        width: child.width ?? 0,
+        height: child.height ?? 0,
+      })
+      for (const member of child.children ?? []) {
+        flatLeaves.push({
+          id: member.id,
+          x: gx + (member.x ?? 0),
+          y: gy + (member.y ?? 0),
+          width: member.width ?? NODE_WIDTH,
+          height: member.height ?? NODE_HEIGHT,
+        })
+      }
+    } else {
+      flatLeaves.push({
+        id: child.id,
+        x: child.x ?? 0,
+        y: child.y ?? 0,
+        width: child.width ?? NODE_WIDTH,
+        height: child.height ?? NODE_HEIGHT,
+      })
+    }
+  }
+
+  const nodes: Node<DiagramNodeData, 'diagramNode'>[] = flatLeaves.map((leaf) => {
+    const diagramNode = nodesById.get(leaf.id)!
     const categoryIndex = diagramNode.category_id ? categoryIndexById.get(diagramNode.category_id) : undefined
-    const size = sizesById.get(child.id)!
     return {
-      id: child.id,
+      id: leaf.id,
       type: 'diagramNode',
-      position: { x: child.x ?? 0, y: child.y ?? 0 },
+      position: { x: leaf.x, y: leaf.y },
       // Top-level width/height so React Flow's own viewport/fitView math is
       // correct immediately, not just after the DOM node is first measured.
-      width: size.width,
-      height: size.height,
-      data: { ...diagramNode, groupLabel, categoryIndex, handleDirection, width: size.width, height: size.height },
+      width: leaf.width,
+      height: leaf.height,
+      data: { ...diagramNode, categoryIndex, handleDirection, width: leaf.width, height: leaf.height },
       draggable: true,
     }
   })
@@ -174,17 +281,29 @@ export async function layoutDiagram(
   // ELK computes obstacle-avoiding routes as part of layout (bend points that
   // steer around any node in the way), keyed by edge id. Read those back so
   // rendering can follow the same route instead of drawing a naive straight
-  // line between node ports that can cut through unrelated nodes.
+  // line between node ports that can cut through unrelated nodes. Root-level
+  // edges are already in absolute coordinates; a group's own edges are
+  // relative to that group's origin (same reasoning as the node flattening
+  // above), so those need the same offset added to every point.
   const routesById = new Map<string, Waypoint[]>()
-  for (const elkEdge of result.edges ?? []) {
-    const section = elkEdge.sections?.[0]
-    if (!section) continue
-    const points: Waypoint[] = [
-      section.startPoint,
-      ...(section.bendPoints ?? []),
-      section.endPoint,
-    ]
-    routesById.set(elkEdge.id, points)
+  const collectRoutes = (elkEdges: ElkNode['edges'] | undefined, offsetX: number, offsetY: number) => {
+    for (const elkEdge of elkEdges ?? []) {
+      const section = elkEdge.sections?.[0]
+      if (!section) continue
+      const shift = (p: Waypoint): Waypoint => ({ x: p.x + offsetX, y: p.y + offsetY })
+      const points: Waypoint[] = [
+        shift(section.startPoint),
+        ...(section.bendPoints ?? []).map(shift),
+        shift(section.endPoint),
+      ]
+      routesById.set(elkEdge.id, points)
+    }
+  }
+  collectRoutes(result.edges, 0, 0)
+  for (const child of result.children ?? []) {
+    if (child.id.startsWith(GROUP_NODE_PREFIX)) {
+      collectRoutes(child.edges, child.x ?? 0, child.y ?? 0)
+    }
   }
 
   // rectpacking (and potentially other future algorithms) never populates
@@ -192,15 +311,8 @@ export async function layoutDiagram(
   // graph -- regardless of elk.edgeRouting. Route those ourselves on a grid
   // so they still avoid node boxes instead of silently falling back to a
   // naive point-to-point line.
-  if (routesById.size === 0 && (result.edges?.length ?? 0) > 0) {
-    const routableNodes = (result.children ?? []).map((child) => ({
-      id: child.id,
-      x: child.x ?? 0,
-      y: child.y ?? 0,
-      width: child.width ?? NODE_WIDTH,
-      height: child.height ?? NODE_HEIGHT,
-    }))
-    const gridRoutes = routeEdgesOnGrid(routableNodes, diagram.edges)
+  if (routesById.size === 0 && diagram.edges.length > 0) {
+    const gridRoutes = routeEdgesOnGrid(flatLeaves, diagram.edges)
     for (const [id, points] of gridRoutes) routesById.set(id, points)
   }
 
@@ -208,12 +320,7 @@ export async function layoutDiagram(
   // else knows their real position/size -- the label chip is positioned
   // independently of ELK's own layout and routing math). One shared array,
   // not recomputed per edge.
-  const nodeBoxes: Box[] = (result.children ?? []).map((child) => ({
-    x: child.x ?? 0,
-    y: child.y ?? 0,
-    width: child.width ?? NODE_WIDTH,
-    height: child.height ?? NODE_HEIGHT,
-  }))
+  const nodeBoxes: Box[] = flatLeaves.map((leaf) => ({ x: leaf.x, y: leaf.y, width: leaf.width, height: leaf.height }))
 
   const edges: Edge<DiagramEdgeData, 'diagramEdge'>[] = diagram.edges.map((edge: DiagramEdge) => ({
     id: edge.id,
@@ -228,5 +335,5 @@ export async function layoutDiagram(
     },
   }))
 
-  return { nodes, edges }
+  return { nodes, edges, groupBoxes }
 }

@@ -83,12 +83,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
     </>
   )
 
-  const groupTag = data.groupLabel ? (
-    <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-neutral-900 px-2 py-0.5 text-[9px] font-medium tracking-wide text-white">
-      {data.groupLabel}
-    </div>
-  ) : null
-
   // Sized per-label (see lib/nodeSizing.ts) instead of every node getting an
   // identical fixed box regardless of how much text it holds.
   const width = data.width ?? NODE_WIDTH
@@ -98,7 +92,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
   if (style.shape === 'diamond') {
     return (
       <div className={`relative flex items-center justify-center ${selectedRing}`} style={boxStyle}>
-        {groupTag}
         {externalBadge}
         <div
           className={`absolute inset-0 ${style.container}`}
@@ -113,7 +106,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
   if (style.shape === 'parallelogram') {
     return (
       <div className={`relative flex items-center justify-center ${selectedRing}`} style={boxStyle}>
-        {groupTag}
         {externalBadge}
         <div className={`absolute inset-0 -skew-x-12 rounded-sm ${style.container}`} style={categoryColorStyle} />
         <div className="relative flex h-full w-full items-center justify-center">{labelContent}</div>
@@ -128,7 +120,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
         className={`relative flex items-center justify-center rounded-lg ${style.container} ${selectedRing}`}
         style={{ ...boxStyle, ...categoryColorStyle }}
       >
-        {groupTag}
         {externalBadge}
         <div className="pointer-events-none absolute inset-y-0 left-1.5 w-px bg-neutral-600" />
         <div className="pointer-events-none absolute inset-y-0 right-1.5 w-px bg-neutral-600" />
@@ -145,7 +136,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
     const capHeight = Math.max(12, Math.round(height * 0.22))
     return (
       <div className={`relative ${selectedRing}`} style={boxStyle}>
-        {groupTag}
         {externalBadge}
         <div
           className="absolute inset-x-0 bottom-0 border-x border-b bg-white border-neutral-300 shadow-sm"
@@ -178,7 +168,6 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
       className={`relative flex items-center justify-center ${roundedClass} ${style.container} ${selectedRing}`}
       style={{ ...boxStyle, ...categoryColorStyle }}
     >
-      {groupTag}
       {externalBadge}
       {labelContent}
       {handles}

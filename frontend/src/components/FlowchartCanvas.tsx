@@ -6,6 +6,7 @@ import type { EdgeShape } from '../lib/theme'
 import { themePalettes, type ThemeName } from '../lib/themes'
 import type { FlowchartDiagram } from '../types'
 import { DiagramNodeComponent, type DiagramFlowNode } from './nodes/DiagramNodeComponent'
+import { GroupBoxComponent, type GroupBoxFlowNode } from './nodes/GroupBoxComponent'
 import { DiagramEdgeComponent, type DiagramFlowEdge } from './edges/DiagramEdgeComponent'
 import { EmptyCanvasState } from './EmptyCanvasState'
 import { FlowchartIcon } from './icons/ToolIcons'
@@ -19,19 +20,26 @@ interface FlowchartCanvasProps {
   snapToGrid: boolean
 }
 
+// Group-container boxes ride in the same React Flow node array as real
+// diagram nodes (so they pan/zoom in lockstep) but are a visually and
+// interactively distinct kind -- see the zIndex/selectable/draggable guards
+// where they're built below.
+export type CanvasFlowNode = DiagramFlowNode | GroupBoxFlowNode
+
 export interface FlowchartCanvasHandle {
   domNode: HTMLDivElement | null
-  getFlow: () => { nodes: DiagramFlowNode[]; edges: DiagramFlowEdge[] }
+  getFlow: () => { nodes: CanvasFlowNode[]; edges: DiagramFlowEdge[] }
 }
 
-const nodeTypes = { diagramNode: DiagramNodeComponent }
+const nodeTypes = { diagramNode: DiagramNodeComponent, groupBox: GroupBoxComponent }
 const edgeTypes = { diagramEdge: DiagramEdgeComponent }
 const SNAP_GRID: [number, number] = [16, 16]
+const GROUP_NODE_ID_PREFIX = 'grp:'
 
 export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvasProps>(
   ({ diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
-    const [nodes, setNodes, onNodesChange] = useNodesState<DiagramFlowNode>([])
+    const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([])
     const [edges, setEdges, onEdgesChange] = useEdgesState<DiagramFlowEdge>([])
 
     useImperativeHandle(
@@ -52,7 +60,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
       }
 
       let cancelled = false
-      layoutDiagram(diagram, layoutAlgorithm, layoutDirection).then(({ nodes: laidOutNodes, edges: laidOutEdges }) => {
+      layoutDiagram(diagram, layoutAlgorithm, layoutDirection).then(({ nodes: laidOutNodes, edges: laidOutEdges, groupBoxes }) => {
         if (cancelled) return
         const withCallbacks: DiagramFlowNode[] = laidOutNodes.map((node) => ({
           ...node,
@@ -60,12 +68,28 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             ...node.data,
             onLabelChange: (id: string, label: string) => {
               setNodes((current) =>
-                current.map((n) => (n.id === id ? { ...n, data: { ...n.data, label } } : n)),
+                current.map((n) => (n.type === 'diagramNode' && n.id === id ? { ...n, data: { ...n.data, label } } : n)),
               )
             },
           },
         }))
-        setNodes(withCallbacks)
+        // Group boxes go first in the array (React Flow renders later nodes
+        // on top) and are explicitly non-interactive -- purely a visual
+        // container, never draggable/selectable/connectable itself, so
+        // dragging or clicking a member node underneath always wins.
+        const groupBoxNodes: GroupBoxFlowNode[] = groupBoxes.map((box) => ({
+          id: GROUP_NODE_ID_PREFIX + box.id,
+          type: 'groupBox',
+          position: { x: box.x, y: box.y },
+          width: box.width,
+          height: box.height,
+          data: { label: box.label, width: box.width, height: box.height },
+          draggable: false,
+          selectable: false,
+          focusable: false,
+          zIndex: -1,
+        }))
+        setNodes([...groupBoxNodes, ...withCallbacks])
         setEdges(
           laidOutEdges.map((edge) => ({
             ...edge,
