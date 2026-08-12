@@ -93,6 +93,13 @@ export type DiagramNodeData = DiagramNode & {
   handleDirection?: LayoutDirection
   width?: number
   height?: number
+  // Bumped (never just set to `true`) whenever something wants this node's
+  // label to jump straight into edit mode -- a freshly placed node via the
+  // shape picker, or an existing selected node via the Enter/F2 shortcut.
+  // A counter instead of a boolean so DiagramNodeComponent's effect can
+  // fire again on a second Enter press even though the value "changed" to
+  // the same conceptual request.
+  editRequestId?: number
 } & Record<string, unknown>
 
 export interface Waypoint {

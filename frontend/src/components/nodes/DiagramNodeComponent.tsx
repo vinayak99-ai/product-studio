@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Handle, NodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react'
 import { getCategoryStyle, nodeTheme, nodeTypeLabels } from '../../lib/theme'
 import { NODE_WIDTH, NODE_HEIGHT, type DiagramNodeData } from '../../lib/elkLayout'
@@ -21,6 +21,14 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(data.label)
   const style = nodeTheme[data.type]
+
+  // editRequestId is a counter, not a boolean, so a second Enter/F2 press
+  // (or a second auto-edit-on-create) re-fires this even though the node
+  // was already in edit mode before -- covers a freshly placed node from
+  // the shape picker and the Enter/F2 rename shortcut with one mechanism.
+  useEffect(() => {
+    if (data.editRequestId) setIsEditing(true)
+  }, [data.editRequestId])
   // Architecture mode only -- process-mode nodes never carry a category_id,
   // so this is null there and every shape falls back to nodeTheme's static
   // type-based coloring exactly as before.
@@ -51,6 +59,7 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
   const labelContent = isEditing ? (
     <input
       autoFocus
+      onFocus={(event) => event.target.select()}
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

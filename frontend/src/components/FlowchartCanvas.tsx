@@ -7,7 +7,9 @@ import {
   ReactFlow,
   useEdgesState,
   useNodesState,
+  type Connection,
   type OnConnect,
+  type OnConnectEnd,
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -21,6 +23,7 @@ import { GroupBoxComponent, type GroupBoxFlowNode } from './nodes/GroupBoxCompon
 import { DiagramEdgeComponent, type DiagramFlowEdge } from './edges/DiagramEdgeComponent'
 import { EmptyCanvasState } from './EmptyCanvasState'
 import { FlowchartIcon } from './icons/ToolIcons'
+import { ShapeQuickPicker } from './ShapeQuickPicker'
 
 interface FlowchartCanvasProps {
   diagram: FlowchartDiagram | null
@@ -53,9 +56,23 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
   ({ diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const flowInstanceRef = useRef<ReactFlowInstance<CanvasFlowNode, DiagramFlowEdge> | null>(null)
+    const addNodeButtonRef = useRef<HTMLButtonElement>(null)
+    // Monotonic, not a boolean -- lets a node's edit-mode effect re-fire on
+    // a second Enter press even though "please edit" was already requested
+    // once before (see DiagramNodeComponent's editRequestId effect).
+    const editRequestCounter = useRef(0)
     const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>([])
     const [edges, setEdges, onEdgesChange] = useEdgesState<DiagramFlowEdge>([])
     const [groupBoxes, setGroupBoxes] = useState<GroupBox[]>([])
+    // Set by every node-creation entry point (double-click, "+ Add node",
+    // drag-a-handle-to-empty-canvas) instead of creating a node directly --
+    // the ShapeQuickPicker's onPick is the one place that actually builds
+    // the node, so shape choice is available everywhere a node gets created.
+    const [pendingPlacement, setPendingPlacement] = useState<{
+      flowPosition: { x: number; y: number }
+      screenPosition: { x: number; y: number }
+      connectFrom?: { source: string; sourceHandle: string | null }
+    } | null>(null)
 
     useImperativeHandle(
       ref,
@@ -158,7 +175,11 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
     // same data shape (all six edit callbacks + a fresh id), only the
     // position and starting label/type/category differ per caller.
     const buildNewNode = useCallback(
-      (position: { x: number; y: number }, overrides: Partial<Pick<DiagramFlowNode['data'], 'type' | 'label' | 'category_id' | 'is_external'>> = {}): DiagramFlowNode => {
+      (
+        position: { x: number; y: number },
+        overrides: Partial<Pick<DiagramFlowNode['data'], 'type' | 'label' | 'category_id' | 'is_external'>> = {},
+        autoEdit = false,
+      ): DiagramFlowNode => {
         const newId = `manual_${Math.random().toString(36).slice(2, 9)}`
         const type = overrides.type ?? 'process'
         const label = overrides.label ?? 'New node'
@@ -184,6 +205,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             categories: diagram?.categories,
             width: size.width,
             height: size.height,
+            editRequestId: autoEdit ? ++editRequestCounter.current : undefined,
             onLabelChange: handleLabelChange,
             onTypeChange: handleTypeChange,
             onCategoryChange: handleCategoryChange,
@@ -207,40 +229,44 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
       [setNodes],
     )
 
+    // Every creation entry point below opens the shape picker instead of
+    // immediately creating a `process` node -- handlePickShape (defined
+    // after the picker's other dependencies) is the one place that
+    // actually builds and places the node.
     const handleAddNode = useCallback(() => {
-      setNodes((current) => {
-        const diagramNodes = current.filter((n): n is DiagramFlowNode => n.type === 'diagramNode')
-        // Drops below the current lowest node (or near the origin if the
-        // canvas is otherwise empty) so it lands in visible empty space
-        // instead of stacked exactly on top of something.
-        const maxY =
-          diagramNodes.length > 0 ? Math.max(...diagramNodes.map((n) => n.position.y + (n.data.height ?? NODE_HEIGHT))) : 0
-        const minX = diagramNodes.length > 0 ? Math.min(...diagramNodes.map((n) => n.position.x)) : 0
-        const newNode = buildNewNode({ x: minX, y: maxY + DEFAULT_NODE_SPACING })
-        return [...current.map((n) => ({ ...n, selected: false })), newNode]
+      const diagramNodes = nodes.filter((n): n is DiagramFlowNode => n.type === 'diagramNode')
+      // Drops below the current lowest node (or near the origin if the
+      // canvas is otherwise empty) so it lands in visible empty space
+      // instead of stacked exactly on top of something.
+      const maxY =
+        diagramNodes.length > 0 ? Math.max(...diagramNodes.map((n) => n.position.y + (n.data.height ?? NODE_HEIGHT))) : 0
+      const minX = diagramNodes.length > 0 ? Math.min(...diagramNodes.map((n) => n.position.x)) : 0
+      const rect = addNodeButtonRef.current?.getBoundingClientRect()
+      setPendingPlacement({
+        flowPosition: { x: minX, y: maxY + DEFAULT_NODE_SPACING },
+        screenPosition: rect ? { x: rect.left, y: rect.bottom + 6 } : { x: 16, y: 56 },
       })
-    }, [setNodes, buildNewNode])
+    }, [nodes])
 
     // Detects a double-click on empty canvas (React Flow only exposes a
     // single onPaneClick, not a dedicated double-click event -- the native
     // MouseEvent's own `detail` count, still present on the wrapped React
-    // event, is the standard way to tell them apart) and drops a node
-    // exactly there, converted from screen to flow coordinates via the
-    // ReactFlowInstance grabbed in onInit.
-    const handlePaneClick = useCallback(
-      (event: ReactMouseEvent) => {
-        if (event.detail !== 2 || !flowInstanceRef.current) return
-        const clickPoint = flowInstanceRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        // buildNewNode's `position` is the box's top-left (matching how
-        // handleAddNode already uses it), but a double-click should feel
-        // like it drops the node centered under the pointer -- offset by
-        // half of what a fresh default-label node actually measures out to.
-        const defaultSize = measureNodeSize('New node', 'process')
-        const position = { x: clickPoint.x - defaultSize.width / 2, y: clickPoint.y - defaultSize.height / 2 }
-        placeNode(buildNewNode(position))
-      },
-      [buildNewNode, placeNode],
-    )
+    // event, is the standard way to tell them apart) and opens the picker
+    // at that exact point, converted from screen to flow coordinates via
+    // the ReactFlowInstance grabbed in onInit.
+    const handlePaneClick = useCallback((event: ReactMouseEvent) => {
+      if (event.detail !== 2 || !flowInstanceRef.current) return
+      const clickPoint = flowInstanceRef.current.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      // buildNewNode's `position` is the box's top-left (matching how
+      // handleAddNode already uses it), but a double-click should feel
+      // like it drops the node centered under the pointer -- offset by
+      // half of what a fresh default-label node actually measures out to.
+      const defaultSize = measureNodeSize('New node', 'process')
+      setPendingPlacement({
+        flowPosition: { x: clickPoint.x - defaultSize.width / 2, y: clickPoint.y - defaultSize.height / 2 },
+        screenPosition: { x: event.clientX, y: event.clientY },
+      })
+    }, [])
 
     const handleDuplicateNode = useCallback(
       (id: string) => {
@@ -292,6 +318,53 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
         setEdges((current) => [...current, newEdge])
       },
       [setEdges, edgeShape, themeName, handleEdgeTypeChange, handleEdgeLabelChange, handleDeleteEdge],
+    )
+
+    // The one place a pendingPlacement actually turns into a node -- shared
+    // by every creation entry point (button, double-click, drag-out).
+    // When `connectFrom` is set (the drag-out case), also wires an edge
+    // back to the node the drag started from via the same handleConnect
+    // logic a handle-to-handle drag already uses.
+    const handlePickShape = useCallback(
+      (type: NodeType) => {
+        if (!pendingPlacement) return
+        const newNode = buildNewNode(pendingPlacement.flowPosition, { type }, true)
+        placeNode(newNode)
+        if (pendingPlacement.connectFrom) {
+          handleConnect({
+            source: pendingPlacement.connectFrom.source,
+            sourceHandle: pendingPlacement.connectFrom.sourceHandle,
+            target: newNode.id,
+            targetHandle: null,
+          } as Connection)
+        }
+        setPendingPlacement(null)
+      },
+      [pendingPlacement, buildNewNode, placeNode, handleConnect],
+    )
+
+    // Drag a handle out and release over empty canvas (not another node's
+    // handle) to create a new, already-connected node there in one motion
+    // -- the same "drag out into space" pattern other diagramming tools
+    // use, instead of requiring node creation and connecting as two
+    // separate steps. `connectionState.toNode` is null only when the drop
+    // point wasn't over any node at all (dropping on top of a node that
+    // just isn't a valid handle target is left alone, since the user was
+    // clearly aiming at that node, not empty space).
+    const handleConnectEnd: OnConnectEnd = useCallback(
+      (event, connectionState) => {
+        if (connectionState.isValid || connectionState.toNode || !connectionState.fromNode || !flowInstanceRef.current) return
+        const point = 'changedTouches' in event ? event.changedTouches[0] : event
+        if (!point) return
+        const dropPoint = flowInstanceRef.current.screenToFlowPosition({ x: point.clientX, y: point.clientY })
+        const defaultSize = measureNodeSize('New node', 'process')
+        setPendingPlacement({
+          flowPosition: { x: dropPoint.x - defaultSize.width / 2, y: dropPoint.y - defaultSize.height / 2 },
+          screenPosition: { x: point.clientX, y: point.clientY },
+          connectFrom: { source: connectionState.fromNode.id, sourceHandle: connectionState.fromHandle?.id ?? null },
+        })
+      },
+      [],
     )
 
     // Recomputes positions — only needed when the diagram or layout geometry changes.
@@ -380,6 +453,50 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
       )
     }, [edgeShape, themeName, setEdges, handleEdgeTypeChange, handleEdgeLabelChange, handleDeleteEdge])
 
+    // Escape/Enter/F2/Cmd+D shortcuts on top of React Flow's own built-in
+    // Delete/Backspace handling. Skipped whenever an input/textarea has
+    // focus so it never fights the label or edge-label text fields.
+    useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+        const target = event.target as HTMLElement | null
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+
+        if (event.key === 'Escape') {
+          if (pendingPlacement) {
+            setPendingPlacement(null)
+            return
+          }
+          setNodes((current) => current.map((n) => (n.selected ? { ...n, selected: false } : n)))
+          setEdges((current) => current.map((e) => (e.selected ? { ...e, selected: false } : e)))
+          return
+        }
+
+        const selectedDiagramNodes = nodes.filter((n): n is DiagramFlowNode => n.type === 'diagramNode' && !!n.selected)
+        if (selectedDiagramNodes.length !== 1) return
+        const selectedId = selectedDiagramNodes[0].id
+
+        if (event.key === 'Enter' || event.key === 'F2') {
+          event.preventDefault()
+          setNodes((current) =>
+            current.map((n) =>
+              n.type === 'diagramNode' && n.id === selectedId
+                ? { ...n, data: { ...n.data, editRequestId: ++editRequestCounter.current } }
+                : n,
+            ),
+          )
+          return
+        }
+
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+          event.preventDefault()
+          handleDuplicateNode(selectedId)
+        }
+      }
+
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    }, [nodes, pendingPlacement, setNodes, setEdges, handleDuplicateNode])
+
     const isEmpty = useMemo(() => !diagram || diagram.nodes.length === 0, [diagram])
     const palette = themePalettes[themeName]
 
@@ -403,6 +520,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
+            onConnectEnd={handleConnectEnd}
             onInit={(instance) => {
               flowInstanceRef.current = instance
             }}
@@ -426,6 +544,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             />
             <Panel position="top-left">
               <button
+                ref={addNodeButtonRef}
                 type="button"
                 onClick={handleAddNode}
                 className="rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-900 shadow-sm transition-colors hover:border-primary hover:text-primary"
@@ -435,6 +554,13 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             </Panel>
           </ReactFlow>
         )}
+        {pendingPlacement ? (
+          <ShapeQuickPicker
+            screenPosition={pendingPlacement.screenPosition}
+            onPick={handlePickShape}
+            onDismiss={() => setPendingPlacement(null)}
+          />
+        ) : null}
       </div>
     )
   },

@@ -48,6 +48,7 @@ export function DiagramEdgeComponent({
   selected,
 }: EdgeProps<DiagramFlowEdge>) {
   const [labelDraft, setLabelDraft] = useState(typeof label === 'string' ? label : '')
+  const [isHovered, setIsHovered] = useState(false)
   const pathParams = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
   const shape = data?.edgeShape ?? 'bezier'
 
@@ -91,13 +92,18 @@ export function DiagramEdgeComponent({
   const style = getEdgeTheme(palette)[data?.type ?? 'default']
 
   return (
-    <>
+    // Wrapping group carries the hover state -- a thin line is an easy
+    // miss to click, so hovering (over a hit-path much wider than the
+    // visible stroke, via interactionWidth below) both confirms "this is
+    // clickable" and makes the target itself easier to land on.
+    <g onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} style={{ cursor: 'pointer' }}>
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
+        interactionWidth={28}
         style={{
           stroke: style.stroke,
-          strokeWidth: style.strokeWidth,
+          strokeWidth: isHovered ? style.strokeWidth + 1 : style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
         }}
       />
@@ -159,6 +165,6 @@ export function DiagramEdgeComponent({
           </button>
         </div>
       </EdgeToolbar>
-    </>
+    </g>
   )
 }
