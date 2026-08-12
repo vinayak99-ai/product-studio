@@ -53,11 +53,12 @@ python run.py
 Plain `uvicorn app.main:app --reload` on Windows runs on `WindowsSelectorEventLoop`,
 which can't launch subprocesses — and Diagram Slides' PPTX export launches headless
 Chromium via Playwright to render each diagram, which needs exactly that. `run.py`
-forces the Proactor event loop policy before uvicorn is even imported, then starts
-uvicorn programmatically, which a module-level fix inside `app/main.py` can't
-reliably guarantee with `--reload` (uvicorn's reloader can create its event loop
-before `app.main` gets re-imported). Every other tool works the same either way —
-this only affects Diagram Slides' export button on Windows.
+forces the Proactor event loop policy before uvicorn is even imported, and runs
+without `--reload` there — `--reload`'s file-watcher runs the actual server in a
+*separate child process* it manages, and that child isn't guaranteed to inherit
+the policy either, which reopens the same ordering problem. Every other tool works
+identically either way — this only affects Diagram Slides' export button. No
+auto-reload on Windows with this launcher: restart it after backend code changes.
 
 ```bash
 # Frontend — one Vite dev server for every tool, in a second terminal
