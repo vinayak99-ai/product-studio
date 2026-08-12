@@ -23,7 +23,10 @@ from app.routes.doc_qa import router as doc_qa_router
 from app.routes.jira import router as jira_router
 from app.routes.deep_analysis import router as deep_analysis_router
 from app.routes.diagram_slide import router as diagram_slide_router
+from app.routes.knowledge_base import router as knowledge_base_router
 from app.spec_builder.main import app as spec_builder_app
+from app.kb_models import SEED_COLLECTIONS, SEED_DEFAULT_INCLUDED
+from app import kb_persistence
 
 settings = get_settings()
 
@@ -62,8 +65,20 @@ app.include_router(doc_qa_router)
 app.include_router(jira_router)
 app.include_router(deep_analysis_router)
 app.include_router(diagram_slide_router)
+app.include_router(knowledge_base_router)
 
 # Spec Builder's own FastAPI app, routed at /pm/* -- e.g. /pm/projects. It
 # keeps its own CORS middleware (app/spec_builder/main.py), which already
 # covers Product Studio's frontend origin.
 app.mount("/pm", spec_builder_app)
+
+
+@app.on_event("startup")
+async def _seed_knowledge_base_collections() -> None:
+    """Idempotent (see kb_persistence.seed_default_collections) -- creates
+    Firm Context / Project Context / Systems Info only if a collection with
+    that name doesn't already exist yet, so this is safe to run on every
+    restart, not just the first one."""
+    kb_persistence.seed_default_collections(
+        {name: name in SEED_DEFAULT_INCLUDED for name in SEED_COLLECTIONS}
+    )

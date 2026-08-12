@@ -13,6 +13,7 @@ config.
 | **Diagram Slides** | Ready | Source material + a prompt → a hand-composed diagram -- linear process, decision flow, hierarchy, architecture, timeline, swimlane, process, ER diagram, state diagram, loop, layers, or Venn diagram (shape encodes type, one reserved accent, no layout-engine routing) -- rendered server-side and exported full-bleed into a PPTX slide. |
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
+| **Knowledge Base** | Ready | Markdown docs from multiple teams organized into named collections (backed by ChromaDB), with structure-aware chunking, an optional catalog file for per-document metadata, and cross-collection search that returns a cited, markdown-formatted answer traceable back to its source document. |
 | Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Infographic Builder's export pipeline. |
 | Data Explorer | Soon | Will search and track delivery status across every Spec Builder project at once. |
 

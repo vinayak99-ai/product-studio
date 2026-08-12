@@ -14,6 +14,7 @@ import { StorySidebar } from './components/StorySidebar'
 import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
 import { DocQaPage } from './components/DocQaPage'
+import { KnowledgeBasePage } from './components/KnowledgeBasePage'
 import { JiraPage } from './components/JiraPage'
 import { DeepAnalysisPage } from './components/DeepAnalysisPage'
 import { SequenceExportControls } from './components/SequenceExportControls'
@@ -148,6 +149,10 @@ function App() {
 
         <div className={`min-h-0 flex-1 ${activeTool === 'doc_qa' ? 'flex' : 'hidden'}`}>
           <DocQaPage />
+        </div>
+
+        <div className={`min-h-0 flex-1 ${activeTool === 'knowledge_base' ? 'flex' : 'hidden'}`}>
+          <KnowledgeBasePage />
         </div>
 
         <div className={`min-h-0 flex-1 ${activeTool === 'jira' ? 'flex' : 'hidden'}`}>

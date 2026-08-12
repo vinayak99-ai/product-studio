@@ -7,6 +7,7 @@ import {
   DocQaIcon,
   InfographicIcon,
   JiraIcon,
+  KnowledgeBaseIcon,
   SequenceIcon,
   SpecIcon,
   StoryIcon,
@@ -21,6 +22,7 @@ export type ToolId =
   | 'infographic'
   | 'story'
   | 'doc_qa'
+  | 'knowledge_base'
   | 'jira'
   | 'data'
 
@@ -96,6 +98,16 @@ export const TOOLS: ToolDef[] = [
     description:
       'Upload a document and get an instant summary, then ask follow-up questions — every ' +
       'answer grounded in the document itself, not outside knowledge.',
+  },
+  {
+    id: 'knowledge_base',
+    label: 'Knowledge Base',
+    status: 'ready',
+    icon: KnowledgeBaseIcon,
+    description:
+      'Organize markdown docs from multiple teams into named collections (backed by ' +
+      'ChromaDB), search across one or several at once, and get a cited, markdown-formatted ' +
+      'answer grounded in exactly which document it came from.',
   },
   {
     id: 'jira',

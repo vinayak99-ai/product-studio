@@ -9,6 +9,12 @@ python-docx==1.1.2
 python-pptx==1.0.2
 websockets==13.1
 python-dotenv==1.0.1
+# Knowledge Base tool's vector store (app/kb_vector_store.py) -- a local
+# PersistentClient (a data directory, no separate server process), same
+# file-based-persistence philosophy as the rest of this backend. Only
+# markdown ingestion is implemented in this version -- see
+# docs/knowledge-base/PLAN.md for the deferred file-type work.
+chromadb==1.5.9
 # Diagram Slides tool: renders the LLM's self-contained HTML+SVG diagram to a
 # PNG server-side so it can be embedded full-bleed in a PPTX slide (see
 # app/diagram_slide_render.py). Deployment requires a matching browser
