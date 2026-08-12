@@ -13,11 +13,13 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { layoutDiagram, NODE_HEIGHT, type GroupBox, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
+import { layoutDiagram, type GroupBox, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
 import { measureNodeSize } from '../lib/nodeSizing'
+import { nextFreePosition, type CanvasFlowNode } from '../lib/canvasFlow'
+import { reconcileDiagram } from '../lib/reconcileDiagram'
 import type { EdgeShape } from '../lib/theme'
 import { themePalettes, type ThemeName } from '../lib/themes'
-import type { DiagramCategory, EdgeType, FlowchartDiagram, NodeType } from '../types'
+import type { DiagramCategory, DiagramGroup, EdgeType, FlowchartDiagram, NodeType } from '../types'
 import { DiagramNodeComponent, type DiagramFlowNode } from './nodes/DiagramNodeComponent'
 import { GroupBoxComponent, type GroupBoxFlowNode } from './nodes/GroupBoxComponent'
 import { DiagramEdgeComponent, type DiagramFlowEdge } from './edges/DiagramEdgeComponent'
@@ -34,23 +36,50 @@ interface FlowchartCanvasProps {
   snapToGrid: boolean
 }
 
-// Group-container boxes ride in the same React Flow node array as real
-// diagram nodes (so they pan/zoom in lockstep) but are a visually and
-// interactively distinct kind -- see the zIndex/selectable/draggable guards
-// where they're built below.
-export type CanvasFlowNode = DiagramFlowNode | GroupBoxFlowNode
+// CanvasFlowNode/isDiagramNode/nextFreePosition live in lib/canvasFlow.ts,
+// not here -- reconcileDiagram.ts (used below, in applyEdit) needs them too,
+// and having this component import reconcileDiagram while reconcileDiagram
+// imports these from this component would be a circular module dependency.
+// Re-exported so existing importers (ExportControls.tsx) don't need to
+// change where they pull CanvasFlowNode/isDiagramNode from.
+export { isDiagramNode, type CanvasFlowNode } from '../lib/canvasFlow'
 
 export interface FlowchartCanvasHandle {
   domNode: HTMLDivElement | null
-  getFlow: () => { nodes: CanvasFlowNode[]; edges: DiagramFlowEdge[]; groupBoxes: GroupBox[]; categories: DiagramCategory[] }
+  getFlow: () => {
+    nodes: CanvasFlowNode[]
+    edges: DiagramFlowEdge[]
+    groupBoxes: GroupBox[]
+    groups: DiagramGroup[]
+    categories: DiagramCategory[]
+  }
+  applyEdit: (newDiagram: FlowchartDiagram) => void
 }
 
 const nodeTypes = { diagramNode: DiagramNodeComponent, groupBox: GroupBoxComponent }
 const edgeTypes = { diagramEdge: DiagramEdgeComponent }
 const SNAP_GRID: [number, number] = [16, 16]
 const GROUP_NODE_ID_PREFIX = 'grp:'
-const DEFAULT_NODE_SPACING = 48
 const DUPLICATE_OFFSET = 32
+
+// Wraps computed group boxes as the non-interactive pseudo-nodes React Flow
+// actually renders -- shared by the fresh-generation layout effect and
+// applyEdit (an incremental AI edit's own groupBoxes, computed by
+// reconcileDiagram.ts rather than ELK, need the exact same wrapping).
+function buildGroupBoxNodes(groupBoxes: GroupBox[]): GroupBoxFlowNode[] {
+  return groupBoxes.map((box) => ({
+    id: GROUP_NODE_ID_PREFIX + box.id,
+    type: 'groupBox',
+    position: { x: box.x, y: box.y },
+    width: box.width,
+    height: box.height,
+    data: { label: box.label, width: box.width, height: box.height },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    zIndex: -1,
+  }))
+}
 
 export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvasProps>(
   ({ diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid }, ref) => {
@@ -73,15 +102,6 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
       screenPosition: { x: number; y: number }
       connectFrom?: { source: string; sourceHandle: string | null }
     } | null>(null)
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        domNode: containerRef.current,
-        getFlow: () => ({ nodes, edges, groupBoxes, categories: diagram?.categories ?? [] }),
-      }),
-      [nodes, edges, groupBoxes, diagram],
-    )
 
     // Stable across renders (setNodes/setEdges never change identity), so
     // every node -- generated or manually added later via handleAddNode --
@@ -235,15 +255,9 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
     // actually builds and places the node.
     const handleAddNode = useCallback(() => {
       const diagramNodes = nodes.filter((n): n is DiagramFlowNode => n.type === 'diagramNode')
-      // Drops below the current lowest node (or near the origin if the
-      // canvas is otherwise empty) so it lands in visible empty space
-      // instead of stacked exactly on top of something.
-      const maxY =
-        diagramNodes.length > 0 ? Math.max(...diagramNodes.map((n) => n.position.y + (n.data.height ?? NODE_HEIGHT))) : 0
-      const minX = diagramNodes.length > 0 ? Math.min(...diagramNodes.map((n) => n.position.x)) : 0
       const rect = addNodeButtonRef.current?.getBoundingClientRect()
       setPendingPlacement({
-        flowPosition: { x: minX, y: maxY + DEFAULT_NODE_SPACING },
+        flowPosition: nextFreePosition(diagramNodes),
         screenPosition: rect ? { x: rect.left, y: rect.bottom + 6 } : { x: 16, y: 56 },
       })
     }, [nodes])
@@ -367,6 +381,63 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
       [],
     )
 
+    // The incremental-AI-edit entry point (called via the imperative
+    // handle, from App.tsx, once a WS edit response comes back) --
+    // deliberately independent of the `diagram` prop/layout effect below,
+    // which always re-runs ELK. reconcileDiagram merges the edited diagram
+    // into the CURRENT canvas state by node/edge id instead, so anything
+    // already manually positioned/added/connected stays exactly as it was
+    // unless the edit itself touched it.
+    const applyEdit = useCallback(
+      (newDiagram: FlowchartDiagram) => {
+        const { nodes: nextNodes, edges: nextEdges, groupBoxes: nextGroupBoxes } = reconcileDiagram(nodes, newDiagram, {
+          categories: diagram?.categories ?? [],
+          edgeShape,
+          themeName,
+          callbacks: {
+            onLabelChange: handleLabelChange,
+            onTypeChange: handleTypeChange,
+            onCategoryChange: handleCategoryChange,
+            onExternalToggle: handleExternalToggle,
+            onDelete: handleDeleteNode,
+            onDuplicate: (id: string) => handleDuplicateNodeRef.current(id),
+            onEdgeTypeChange: handleEdgeTypeChange,
+            onEdgeLabelChange: handleEdgeLabelChange,
+            onEdgeDelete: handleDeleteEdge,
+          },
+        })
+        setNodes([...buildGroupBoxNodes(nextGroupBoxes), ...nextNodes])
+        setGroupBoxes(nextGroupBoxes)
+        setEdges(nextEdges)
+      },
+      [
+        nodes,
+        diagram,
+        edgeShape,
+        themeName,
+        handleLabelChange,
+        handleTypeChange,
+        handleCategoryChange,
+        handleExternalToggle,
+        handleDeleteNode,
+        handleEdgeTypeChange,
+        handleEdgeLabelChange,
+        handleDeleteEdge,
+        setNodes,
+        setEdges,
+      ],
+    )
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        domNode: containerRef.current,
+        getFlow: () => ({ nodes, edges, groupBoxes, groups: diagram?.groups ?? [], categories: diagram?.categories ?? [] }),
+        applyEdit,
+      }),
+      [nodes, edges, groupBoxes, diagram, applyEdit],
+    )
+
     // Recomputes positions — only needed when the diagram or layout geometry changes.
     useEffect(() => {
       if (!diagram || diagram.nodes.length === 0) {
@@ -395,18 +466,7 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
         // on top) and are explicitly non-interactive -- purely a visual
         // container, never draggable/selectable/connectable itself, so
         // dragging or clicking a member node underneath always wins.
-        const groupBoxNodes: GroupBoxFlowNode[] = laidOutGroupBoxes.map((box) => ({
-          id: GROUP_NODE_ID_PREFIX + box.id,
-          type: 'groupBox',
-          position: { x: box.x, y: box.y },
-          width: box.width,
-          height: box.height,
-          data: { label: box.label, width: box.width, height: box.height },
-          draggable: false,
-          selectable: false,
-          focusable: false,
-          zIndex: -1,
-        }))
+        const groupBoxNodes = buildGroupBoxNodes(laidOutGroupBoxes)
         setNodes([...groupBoxNodes, ...withCallbacks])
         setGroupBoxes(laidOutGroupBoxes)
         setEdges(

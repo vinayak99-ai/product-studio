@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 from app.archetypes import ARCHETYPES, ArchetypeId
 from app.llm_client import generate_structured
-from app.models import FlowchartDiagram
+from app.models import DiagramStyle, FlowchartDiagram
 
 CLASSIFY_SYSTEM_PROMPT = """You are a flowchart architect. Given source material and a user \
 prompt, decide which canonical diagram shape best fits the process described, before any \
@@ -78,6 +78,28 @@ groups entirely if nothing in the material implies a bounded region.
 """
 
 
+# Edit prompts reuse the base prompts' own rule text (node/edge conventions,
+# grouping, etc.) so an edited diagram stays stylistically consistent with a
+# freshly generated one -- only the framing at the top changes, from "derive
+# from scratch" to "here's the existing diagram, apply just this change."
+EDIT_PREFIX = """You are editing an EXISTING diagram, not creating one from scratch. You will \
+be given the current diagram as JSON and an editing instruction. Return the FULL updated \
+diagram matching the schema below.
+
+Editing rules:
+- Apply ONLY what the instruction asks for. Every node, edge, group, and category not \
+implied by the instruction must come back unchanged, byte-for-byte identical -- \
+INCLUDING its `id`. Ids are the only way positions and manual styling survive an edit; \
+never rename or reassign an existing id unless that element is being removed entirely.
+- Do not "clean up," reorganize, or rephrase anything the instruction didn't ask about, \
+even if you'd word it differently starting from scratch.
+- New nodes/edges/groups need new ids that don't collide with any existing id.
+"""
+
+SYSTEM_PROMPT_EDIT = f"{EDIT_PREFIX}\n{SYSTEM_PROMPT}"
+ARCHITECTURE_SYSTEM_PROMPT_EDIT = f"{EDIT_PREFIX}\n{ARCHITECTURE_SYSTEM_PROMPT}"
+
+
 class ArchetypeClassification(BaseModel):
     archetype: ArchetypeId
     reason: str
@@ -104,3 +126,15 @@ async def generate_diagram(
 async def generate_architecture_diagram(material: str, prompt: str) -> FlowchartDiagram:
     user_message = f"Source material:\n{material}\n\nInstructions:\n{prompt}"
     return await generate_structured(ARCHITECTURE_SYSTEM_PROMPT, user_message, FlowchartDiagram)
+
+
+async def edit_diagram(
+    current: FlowchartDiagram, instruction: str, diagram_style: DiagramStyle
+) -> FlowchartDiagram:
+    system_prompt = (
+        ARCHITECTURE_SYSTEM_PROMPT_EDIT if diagram_style == DiagramStyle.architecture else SYSTEM_PROMPT_EDIT
+    )
+    user_message = (
+        f"Current diagram (JSON):\n{current.model_dump_json()}\n\nEditing instruction:\n{instruction}"
+    )
+    return await generate_structured(system_prompt, user_message, FlowchartDiagram)

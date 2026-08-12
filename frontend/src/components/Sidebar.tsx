@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { extractFile, openGenerateSocket } from '../lib/api'
-import type { DiagramStyle, GenerateResponse, ValidationIssue, WsProgressMessage } from '../types'
+import { extractFile, openEditDiagramSocket, openGenerateSocket } from '../lib/api'
+import type { DiagramStyle, FlowchartDiagram, GenerateResponse, ValidationIssue, WsProgressMessage } from '../types'
 import { IssuesPanel } from './IssuesPanel'
 
 type Status = 'idle' | 'classifying' | 'calling_llm' | 'validating' | 'done' | 'error'
@@ -8,6 +8,17 @@ type Status = 'idle' | 'classifying' | 'calling_llm' | 'validating' | 'done' | '
 interface SidebarProps {
   onResult: (result: GenerateResponse) => void
   issues: ValidationIssue[]
+  // Incremental AI editing -- only meaningful once a diagram already
+  // exists. getCurrentDiagram reads the LIVE canvas state (including any
+  // manual edits), not the original generation result, since that's what
+  // an edit instruction should actually apply to. onEditResult is
+  // deliberately separate from onResult: it hands the updated diagram to
+  // FlowchartCanvas's own reconciliation (position-preserving merge)
+  // instead of replacing the diagram prop outright, which would re-trigger
+  // a full ELK re-layout and discard manual positioning.
+  hasDiagram: boolean
+  getCurrentDiagram: () => FlowchartDiagram | null
+  onEditResult: (diagram: FlowchartDiagram) => void
 }
 
 const STATUS_LABEL: Record<Status, string> = {
@@ -19,7 +30,16 @@ const STATUS_LABEL: Record<Status, string> = {
   error: 'Something went wrong.',
 }
 
-export function Sidebar({ onResult, issues }: SidebarProps) {
+const EDIT_STATUS_LABEL: Record<Status, string> = {
+  idle: '',
+  classifying: '',
+  calling_llm: 'Applying edit…',
+  validating: 'Validating structure…',
+  done: 'Diagram updated.',
+  error: 'Something went wrong.',
+}
+
+export function Sidebar({ onResult, issues, hasDiagram, getCurrentDiagram, onEditResult }: SidebarProps) {
   const [tab, setTab] = useState<'paste' | 'upload'>('paste')
   const [diagramStyle, setDiagramStyle] = useState<DiagramStyle>('process')
   const [material, setMaterial] = useState('')
@@ -30,8 +50,17 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const closeSocketRef = useRef<(() => void) | null>(null)
 
+  const [editInstruction, setEditInstruction] = useState('')
+  const [editStatus, setEditStatus] = useState<Status>('idle')
+  const [editErrorMessage, setEditErrorMessage] = useState<string | null>(null)
+  const [editIssues, setEditIssues] = useState<ValidationIssue[]>([])
+  const closeEditSocketRef = useRef<(() => void) | null>(null)
+
   useEffect(() => {
-    return () => closeSocketRef.current?.()
+    return () => {
+      closeSocketRef.current?.()
+      closeEditSocketRef.current?.()
+    }
   }, [])
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,8 +113,46 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
     closeSocketRef.current = openGenerateSocket(material, prompt, onMessage, onError, diagramStyle)
   }, [material, prompt, diagramStyle, onResult])
 
+  const handleApplyEdit = useCallback(() => {
+    if (!editInstruction.trim()) {
+      setEditErrorMessage('Describe the change you want before applying it.')
+      return
+    }
+    const currentDiagram = getCurrentDiagram()
+    if (!currentDiagram) {
+      setEditErrorMessage('No diagram to edit yet.')
+      return
+    }
+
+    setEditErrorMessage(null)
+    setEditStatus('calling_llm')
+    closeEditSocketRef.current?.()
+
+    const onMessage = (message: WsProgressMessage) => {
+      if (message.stage === 'calling_llm' || message.stage === 'validating') {
+        setEditStatus(message.stage)
+      } else if (message.stage === 'done') {
+        setEditStatus('done')
+        setEditIssues(message.result.issues)
+        onEditResult(message.result.diagram)
+        setEditInstruction('')
+      } else if (message.stage === 'error') {
+        setEditStatus('error')
+        setEditErrorMessage(message.message)
+      }
+    }
+
+    const onError = () => {
+      setEditStatus('error')
+      setEditErrorMessage('Connection to backend failed. Is the API running?')
+    }
+
+    closeEditSocketRef.current = openEditDiagramSocket(currentDiagram, editInstruction, onMessage, onError, diagramStyle)
+  }, [editInstruction, getCurrentDiagram, onEditResult, diagramStyle])
+
   const isGenerating =
     status === 'classifying' || status === 'calling_llm' || status === 'validating'
+  const isEditing = editStatus === 'calling_llm' || editStatus === 'validating'
 
   return (
     <aside className="flex h-full w-[360px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-neutral-200 bg-white p-4">
@@ -209,6 +276,41 @@ export function Sidebar({ onResult, issues }: SidebarProps) {
       {errorMessage ? <p className="text-xs text-red-600">{errorMessage}</p> : null}
 
       <IssuesPanel issues={issues} />
+
+      {hasDiagram ? (
+        <div className="border-t border-neutral-200 pt-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+            Edit with AI
+          </h2>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            Describe a change -- manual edits and positioning stay put; only what the
+            instruction touches gets updated.
+          </p>
+          <textarea
+            value={editInstruction}
+            onChange={(event) => setEditInstruction(event.target.value)}
+            placeholder='e.g. "Add a step after Approve for notifying the customer" or "Rename the OMS node to Order Management"'
+            className="mt-2 h-16 w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-900 outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            onClick={handleApplyEdit}
+            disabled={isEditing}
+            className="mt-2 w-full rounded-md border border-neutral-200 bg-white py-2 text-xs font-semibold text-neutral-900 transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isEditing ? 'Applying…' : 'Apply edit'}
+          </button>
+
+          {editStatus !== 'idle' ? (
+            <p className={`mt-2 text-xs ${editStatus === 'error' ? 'text-red-600' : 'text-neutral-600'}`}>
+              {EDIT_STATUS_LABEL[editStatus]}
+            </p>
+          ) : null}
+          {editErrorMessage ? <p className="mt-1 text-xs text-red-600">{editErrorMessage}</p> : null}
+
+          <IssuesPanel issues={editIssues} />
+        </div>
+      ) : null}
     </aside>
   )
 }

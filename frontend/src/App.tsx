@@ -24,7 +24,8 @@ import type { LayoutAlgorithm, LayoutDirection } from './lib/elkLayout'
 import type { EdgeShape } from './lib/theme'
 import { applyTheme, type ThemeName } from './lib/themes'
 import { TOOLS, type ToolId } from './lib/tools'
-import type { GenerateResponse } from './types'
+import { toBackendDiagram } from './lib/diagramSerialization'
+import type { FlowchartDiagram, GenerateResponse } from './types'
 import type { GenerateSequenceResponse } from './sequenceTypes'
 import type { GenerateDeckResponse, GenerateInfographicResponse } from './infographicTypes'
 import type { StoryScript } from './storyTypes'
@@ -56,6 +57,23 @@ function App() {
     }
   }, [themeName])
 
+  // Reads the LIVE canvas state (manual edits included), not `result.diagram`
+  // (the original generation) -- an "Edit with AI" instruction should apply
+  // to whatever's actually on screen right now.
+  const getCurrentDiagramForEdit = (): FlowchartDiagram | null => {
+    const flow = canvasRef.current?.getFlow()
+    if (!flow) return null
+    return toBackendDiagram(flow.nodes, flow.edges, flow.groups, flow.categories)
+  }
+
+  // Deliberately NOT setResult -- that would replace the `diagram` prop and
+  // re-trigger FlowchartCanvas's full ELK layout effect, discarding manual
+  // positions. applyEdit merges the edited diagram into the live canvas
+  // state instead (see reconcileDiagram.ts).
+  const handleEditResult = (diagram: FlowchartDiagram) => {
+    canvasRef.current?.applyEdit(diagram)
+  }
+
   const comingSoonTool = TOOLS.find((tool) => tool.id === activeTool && tool.status === 'soon')
 
   return (
@@ -70,7 +88,13 @@ function App() {
           ref={flowchartRootRef}
           className={`min-h-0 flex-1 ${activeTool === 'flowchart' ? 'flex' : 'hidden'}`}
         >
-          <Sidebar onResult={setResult} issues={result?.issues ?? []} />
+          <Sidebar
+            onResult={setResult}
+            issues={result?.issues ?? []}
+            hasDiagram={!!result}
+            getCurrentDiagram={getCurrentDiagramForEdit}
+            onEditResult={handleEditResult}
+          />
           <main className="flex min-w-0 flex-1 flex-col">
             <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-2">
               <h1 className="text-sm font-semibold text-neutral-900">Diagram</h1>

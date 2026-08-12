@@ -4,12 +4,7 @@ import { exportPdfVector } from '../lib/exportPdfVector'
 import { exportPptx } from '../lib/exportPptx'
 import type { LayoutAlgorithm } from '../lib/elkLayout'
 import { themePalettes, type ThemeName } from '../lib/themes'
-import type { CanvasFlowNode, FlowchartCanvasHandle } from './FlowchartCanvas'
-import type { DiagramFlowNode } from './nodes/DiagramNodeComponent'
-
-function isDiagramNode(node: CanvasFlowNode): node is DiagramFlowNode {
-  return node.type === 'diagramNode'
-}
+import { isDiagramNode, type FlowchartCanvasHandle } from './FlowchartCanvas'
 
 interface ExportControlsProps {
   targetRef: RefObject<FlowchartCanvasHandle | null>

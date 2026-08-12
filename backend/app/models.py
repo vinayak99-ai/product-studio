@@ -87,6 +87,17 @@ class GenerateRequest(BaseModel):
     diagram_style: DiagramStyle = DiagramStyle.process
 
 
+class EditDiagramRequest(BaseModel):
+    """Incremental edit on top of a diagram that may already carry manual
+    changes (dragged positions, added/deleted nodes, hand-drawn edges) --
+    `current_diagram` is the live canvas state, not the original generation
+    result, so the LLM edits what's actually on screen."""
+
+    current_diagram: FlowchartDiagram
+    instruction: str
+    diagram_style: DiagramStyle = DiagramStyle.process
+
+
 class GenerateResponse(BaseModel):
     diagram: FlowchartDiagram
     issues: list[ValidationIssue] = Field(default_factory=list)

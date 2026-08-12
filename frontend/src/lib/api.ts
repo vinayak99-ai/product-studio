@@ -1,4 +1,4 @@
-import type { DiagramStyle, ExtractResponse, GenerateResponse, WsProgressMessage } from '../types'
+import type { DiagramStyle, ExtractResponse, FlowchartDiagram, GenerateResponse, WsProgressMessage } from '../types'
 import type { SequenceWsProgressMessage } from '../sequenceTypes'
 import type { DeckWsProgressMessage, InfographicDiagram, InfographicWsProgressMessage } from '../infographicTypes'
 
@@ -42,6 +42,33 @@ export function openGenerateSocket(
 
   socket.onopen = () => {
     socket.send(JSON.stringify({ material, prompt, diagram_style: diagramStyle }))
+  }
+  socket.onmessage = (event) => {
+    onMessage(JSON.parse(event.data) as WsProgressMessage)
+  }
+  socket.onerror = () => {
+    onError()
+  }
+
+  return () => socket.close()
+}
+
+// Incremental edit on the diagram currently on the canvas (not the original
+// generation result) -- otherwise identical open/send/message shape to
+// openGenerateSocket, just a different payload and endpoint. Reuses
+// WsProgressMessage since the edit route's stages ('calling_llm',
+// 'validating', 'done'/'error') are a subset of the same message shapes.
+export function openEditDiagramSocket(
+  currentDiagram: FlowchartDiagram,
+  instruction: string,
+  onMessage: (message: WsProgressMessage) => void,
+  onError: () => void,
+  diagramStyle: DiagramStyle = 'process',
+): () => void {
+  const socket = new WebSocket(`${WS_BASE}/api/ws/edit-diagram`)
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ current_diagram: currentDiagram, instruction, diagram_style: diagramStyle }))
   }
   socket.onmessage = (event) => {
     onMessage(JSON.parse(event.data) as WsProgressMessage)
