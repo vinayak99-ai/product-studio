@@ -9,6 +9,8 @@ export type DiagramSlideType =
   | 'er'
   | 'state'
   | 'loop'
+  | 'layers'
+  | 'venn'
 
 export interface DiagramSlideResult {
   diagram_type: DiagramSlideType

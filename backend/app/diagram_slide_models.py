@@ -13,6 +13,8 @@ DiagramSlideType = Literal[
     "er",
     "state",
     "loop",
+    "layers",
+    "venn",
 ]
 
 

@@ -51,7 +51,15 @@ happens exactly once with no loops or re-entry, use linear_process or decision_f
 - loop: a circular operating cycle where the last step feeds back into the first and every pass accumulates \
 shared state (e.g. a growth flywheel, a PDCA/OODA cycle, a recurring release cadence). Best when the material \
 genuinely has no start or end and each cycle deposits something into a common pool -- if the "cycle" actually \
-terminates somewhere, use decision_flow or linear_process instead."""
+terminates somewhere, use decision_flow or linear_process instead.
+- layers: a stack of horizontal tiers where each layer sits strictly above or below the next (e.g. a tech \
+stack, the OSI model, a CSS-cascade or abstraction-layer diagram). Best when the material's structure is \
+purely vertical rank with no cross-talk between non-adjacent layers -- if layers actually call or depend on \
+each other out of order, use architecture instead.
+- venn: 2-3 overlapping sets where the point is what they share versus what's unique to each (e.g. a \
+market/feature overlap, an ikigai-style desirable x feasible x viable frame). Best when the material is \
+genuinely about intersection, not a ranked or sequential relationship -- if there's no real overlap to name, \
+or there are 4+ sets, use a different type (a matrix or table handles many-set comparisons better)."""
 
 # Shared rules, ported from style-guide.md, re-anchored to Product Studio's
 # validated brand palette (infographic_template.py's BRAND_COLORS: primary
@@ -308,4 +316,45 @@ diagrams); do not make spokes solid (a solid spoke reads as another process step
 do not space stations unevenly or mix curved ring segments with straight ones; do not exceed 8 \
 stations -- if the material has more stages, group them or split into an overview + detail pair; do \
 not use this type for a cycle that has a real end -- that is a decision_flow.""",
+    "layers": """## layers rules
+
+Stack 4-6 full-width horizontal bands, one per layer, in a single column with the topmost layer drawn \
+first. Give every band the same height unless the material genuinely calls for one layer to read as \
+bigger (and if so, say why in a caption -- an unexplained height difference reads as a mistake). \
+Separate bands with a thin 1px muted hairline; fill every band with the same treatment (either all \
+paper with hairlines only, or alternating paper / a very light muted tint) -- pick one and hold it for \
+every layer.
+
+Each band holds a left-aligned layer name and, optionally, a short index tag before it (`L1`, `01`) and \
+a short right-aligned note after it. If the material has a clear direction (abstraction increasing \
+upward, packets flowing downward), add one small arrow with a one-word label just outside the left \
+margin -- do not add directional arrows between every pair of layers, one indicator for the whole stack \
+is enough.
+
+Give the accent color to exactly one layer -- the bottleneck, the layer under discussion, or the one \
+the surrounding content is actually about -- never to every layer.
+
+Anti-patterns: do not use this type for content where layers call back and forth out of strict top-to- \
+bottom order (that is architecture, not layers); do not color-code every layer differently (it destroys \
+the sense of one stack); do not vary band heights without a stated reason; do not skip a layer's number \
+in the index tags without explaining the gap.""",
+    "venn": """## venn rules
+
+Draw 2-3 overlapping circles with a thin ink-colored stroke and a very faint fill tint, so the tint \
+naturally compounds where circles overlap. Size circles equally only when the underlying sets are \
+genuinely comparable; when the material implies one set is meaningfully bigger than another, scale the \
+circles proportionally -- never fake equal sizes to make the layout tidy.
+
+Place each set's name outside its circle, never crossing the circle's stroke. Label every overlap \
+region directly inside that region, centered; if an overlap is too small to hold its label cleanly, \
+draw a short leader line out to clear space instead of cramming text into the sliver.
+
+Give the accent to exactly one intersection region -- the "sweet spot" the surrounding content is \
+actually about -- as a light accent-tinted fill on that region only. Never accent more than one region, \
+and never accent a whole circle.
+
+Anti-patterns: do not leave any overlap region unlabeled; do not draw non-overlapping circles when the \
+material's point is that the sets DO overlap; do not fake equal circle sizes when the sets differ \
+meaningfully; do not accent more than one intersection; do not use more than 3 circles -- past that, \
+overlaps become unreadable, so use a comparison matrix or table instead.""",
 }
