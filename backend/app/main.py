@@ -10,11 +10,11 @@
 # programmatically -- run that (or start.ps1) instead of the bare `uvicorn
 # app.main:app` command on Windows.
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes.generate import router as generate_router
+from app.extraction import extract_text
 from app.routes.sequence import router as sequence_router
 from app.routes.infographic import router as infographic_router
 from app.routes.story import router as story_router
@@ -23,6 +23,7 @@ from app.routes.doc_qa import router as doc_qa_router
 from app.routes.jira import router as jira_router
 from app.routes.deep_analysis import router as deep_analysis_router
 from app.routes.diagram_slide import router as diagram_slide_router
+from app.routes.diagram_shaper import router as diagram_shaper_router
 from app.spec_builder.main import app as spec_builder_app
 
 settings = get_settings()
@@ -37,7 +38,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(generate_router)
+
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+# Shared across every tool's sidebar (paste-or-upload panel) -- previously
+# lived in Flowchart Builder's own routes/generate.py, which owned the route
+# even though the extraction logic itself (app/extraction.py) was already
+# shared. Re-homed here directly rather than in a new file, matching the
+# /api/health endpoint above.
+@app.post("/api/extract")
+async def extract(file: UploadFile) -> dict[str, str]:
+    text = await extract_text(file)
+    return {"text": text, "filename": file.filename or ""}
+
+
 app.include_router(sequence_router)
 app.include_router(infographic_router)
 app.include_router(story_router)
@@ -46,6 +63,7 @@ app.include_router(doc_qa_router)
 app.include_router(jira_router)
 app.include_router(deep_analysis_router)
 app.include_router(diagram_slide_router)
+app.include_router(diagram_shaper_router)
 
 # Spec Builder's own FastAPI app, routed at /pm/* -- e.g. /pm/projects. It
 # keeps its own CORS middleware (app/spec_builder/main.py), which already

@@ -29,8 +29,8 @@ export const SequenceCanvas = forwardRef<SequenceCanvasHandle, SequenceCanvasPro
 
     useImperativeHandle(ref, () => ({ domNode: containerRef.current }), [])
 
-    // No async layout pass (unlike FlowchartCanvas's ELK call) -- the
-    // column/row arithmetic in layoutSequenceDiagram is synchronous.
+    // No async layout pass -- the column/row arithmetic in
+    // layoutSequenceDiagram is synchronous.
     useEffect(() => {
       if (!diagram || diagram.participants.length === 0) {
         setNodes([])

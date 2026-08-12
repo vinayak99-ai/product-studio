@@ -1,4 +1,4 @@
-from app.models import ValidationIssue, ValidationSeverity
+from app.shared_models import ValidationIssue, ValidationSeverity
 from app.sequence_models import SequenceDiagram
 
 

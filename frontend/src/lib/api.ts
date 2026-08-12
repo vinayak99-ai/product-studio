@@ -1,7 +1,8 @@
-import type { DiagramStyle, ExtractResponse, FlowchartDiagram, GenerateResponse, WsProgressMessage } from '../types'
+import type { ExtractResponse } from '../types'
 import type { SequenceWsProgressMessage } from '../sequenceTypes'
 import type { DeckWsProgressMessage, InfographicDiagram, InfographicWsProgressMessage } from '../infographicTypes'
 import type { DiagramSlideResult, DiagramSlideWsProgressMessage } from '../diagramSlideTypes'
+import type { DiagramShaperResult, DiagramShaperWsProgressMessage } from '../diagramShaperTypes'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
@@ -14,71 +15,6 @@ export async function extractFile(file: File): Promise<ExtractResponse> {
     throw new Error(await res.text())
   }
   return res.json()
-}
-
-export async function generateDiagram(
-  material: string,
-  prompt: string,
-  diagramStyle: DiagramStyle = 'process',
-): Promise<GenerateResponse> {
-  const res = await fetch(`${API_BASE}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ material, prompt, diagram_style: diagramStyle }),
-  })
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
-  return res.json()
-}
-
-export function openGenerateSocket(
-  material: string,
-  prompt: string,
-  onMessage: (message: WsProgressMessage) => void,
-  onError: () => void,
-  diagramStyle: DiagramStyle = 'process',
-): () => void {
-  const socket = new WebSocket(`${WS_BASE}/api/ws/generate`)
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({ material, prompt, diagram_style: diagramStyle }))
-  }
-  socket.onmessage = (event) => {
-    onMessage(JSON.parse(event.data) as WsProgressMessage)
-  }
-  socket.onerror = () => {
-    onError()
-  }
-
-  return () => socket.close()
-}
-
-// Incremental edit on the diagram currently on the canvas (not the original
-// generation result) -- otherwise identical open/send/message shape to
-// openGenerateSocket, just a different payload and endpoint. Reuses
-// WsProgressMessage since the edit route's stages ('calling_llm',
-// 'validating', 'done'/'error') are a subset of the same message shapes.
-export function openEditDiagramSocket(
-  currentDiagram: FlowchartDiagram,
-  instruction: string,
-  onMessage: (message: WsProgressMessage) => void,
-  onError: () => void,
-  diagramStyle: DiagramStyle = 'process',
-): () => void {
-  const socket = new WebSocket(`${WS_BASE}/api/ws/edit-diagram`)
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({ current_diagram: currentDiagram, instruction, diagram_style: diagramStyle }))
-  }
-  socket.onmessage = (event) => {
-    onMessage(JSON.parse(event.data) as WsProgressMessage)
-  }
-  socket.onerror = () => {
-    onError()
-  }
-
-  return () => socket.close()
 }
 
 export function openSequenceGenerateSocket(
@@ -225,6 +161,49 @@ export function exportDiagramSlideSvg(result: DiagramSlideResult): void {
   const link = document.createElement('a')
   link.href = url
   link.download = 'diagram-slide.svg'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+export function openDiagramShaperGenerateSocket(
+  sourceMaterial: string,
+  prompt: string,
+  onMessage: (message: DiagramShaperWsProgressMessage) => void,
+  onError: () => void,
+): () => void {
+  const socket = new WebSocket(`${WS_BASE}/api/ws/generate-diagram-shaper`)
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ source_material: sourceMaterial, prompt }))
+  }
+  socket.onmessage = (event) => {
+    onMessage(JSON.parse(event.data) as DiagramShaperWsProgressMessage)
+  }
+  socket.onerror = () => {
+    onError()
+  }
+
+  return () => socket.close()
+}
+
+// The deliverable is real native PPTX shapes built server-side straight from
+// the shape/connector JSON (app/diagram_shaper_pptx.py) -- no screenshot, no
+// rendering step client-side, so this just posts the JSON and downloads the
+// binary that comes back.
+export async function exportDiagramShaperPptx(result: DiagramShaperResult): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/diagram-shaper/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result),
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'diagram-shaper.pptx'
   link.click()
   URL.revokeObjectURL(url)
 }

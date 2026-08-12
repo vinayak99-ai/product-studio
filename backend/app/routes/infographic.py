@@ -59,7 +59,7 @@ from app.infographic_template import (
     build_value_proposition_pptx,
     build_wheel_pptx,
 )
-from app.models import GenerateRequest, ValidationIssue, ValidationSeverity
+from app.shared_models import GenerateRequest, ValidationIssue, ValidationSeverity
 
 router = APIRouter(prefix="/api")
 

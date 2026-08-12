@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from app.models import ValidationIssue
+from app.shared_models import ValidationIssue
 
 
 class MessageType(str, Enum):

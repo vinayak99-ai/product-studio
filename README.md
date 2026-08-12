@@ -8,13 +8,13 @@ config.
 
 | Tool | Status | What it does |
 |---|---|---|
-| **Flowchart Builder** | Ready | Source material + a prompt → an interactive, editable flowchart, laid out and rendered entirely client-side. |
 | **Sequence Diagram** | Ready | Source material + a prompt → an interactive sequence diagram (participants, sync/return messages), exportable to PNG. |
+| **Diagram Shaper** | Ready | Source material + a prompt → a process/decision/hierarchy/architecture/timeline diagram built from a typed list of shapes and connectors, exported as native, individually editable PowerPoint shapes and text — not a screenshot. |
 | **Infographic Builder** | Ready | Source material + a prompt → a single on-brand infographic slide (14 templates) or a full multi-slide PRD-to-deck PPTX that always opens with a title/cover slide and a paginated agenda. |
 | **Diagram Slides** | Ready | Source material + a prompt → a hand-composed process/decision/hierarchy/architecture/timeline diagram (shape encodes type, one reserved accent, no layout-engine routing), rendered server-side and exported full-bleed into a PPTX slide. |
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
-| Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Flowchart Builder's export pipeline. |
+| Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Infographic Builder's export pipeline. |
 | Data Explorer | Soon | Will search and track delivery status across every Spec Builder project at once. |
 
 Registry lives in `frontend/src/lib/tools.ts`, rendered by `frontend/src/components/Rail.tsx`.
@@ -84,8 +84,8 @@ generate anything.
 
 ### LLM provider
 
-Every LLM call in the backend — Flowchart, Sequence, Infographic, Story Builder, and Spec
-Builder alike — goes through a single switchable provider (`backend/app/llm_client.py`)
+Every LLM call in the backend — Sequence, Diagram Shaper, Diagram Slides, Infographic,
+Story Builder, and Spec Builder alike — goes through a single switchable provider (`backend/app/llm_client.py`)
 rather than each tool talking to a model API directly. `LLM_PROVIDER=openai` (the default)
 uses `OPENAI_API_KEY`/`OPENAI_MODEL` above. `LLM_PROVIDER=corporate` routes every call to
 your own internal LLM gateway instead — but `CorporateLLMProvider` in `llm_client.py` is a
@@ -101,12 +101,13 @@ with one env var instead of Spec Builder needing its own separate model config.
 ## Project layout
 
 ```
-backend/      One FastAPI process: Flowchart/Sequence/Infographic/Story routes (/api/*)
-              plus Spec Builder's app (backend/app/spec_builder/) mounted at /pm/*
+backend/      One FastAPI process: Sequence/Diagram Shaper/Diagram Slides/Infographic/
+              Story routes (/api/*) plus Spec Builder's app
+              (backend/app/spec_builder/) mounted at /pm/*
 frontend/     One React app: the rail-nav shell, plus each tool's canvas/panels —
               Spec Builder's own pages/components live under
               frontend/src/features/spec-builder/
-docs/         Flowchart Builder's architecture doc, plus Spec Builder's full feature/
+docs/         Diagram Shaper's architecture doc, plus Spec Builder's full feature/
               known-issues/roadmap docs under docs/spec-builder/
 ```
 
@@ -114,45 +115,34 @@ docs/         Flowchart Builder's architecture doc, plus Spec Builder's full fea
 
 The left rail is the only navigation — no separate menus per tool. Each icon is a tool
 from the `TOOLS` registry; a small dot marks the ones still "Soon." The breadcrumb at the
-top ("Product Studio / Flowchart Builder") reflects whichever tool is active.
+top ("Product Studio / Diagram Shaper") reflects whichever tool is active.
 
 Switching tools doesn't unmount them — every ready tool stays mounted (just hidden) in
 the background, so an in-progress diagram or an unsaved edit survives clicking to another
 tool and back. This matters most for Spec Builder, which autosaves on a 2-second
 debounce: switching away mid-edit doesn't lose anything.
 
-## Using Flowchart Builder
+## Using Diagram Shaper
 
 1. Paste source material or upload a `.txt`/`.md`/`.pdf`/`.docx` file, and enter a
-   prompt describing the flowchart you want.
-2. The frontend opens a WebSocket to the backend (`/api/ws/generate`), which first
-   classifies the material's shape (linear, approval gate, validation/retry, routing
-   decision, fork/join) so generation targets the right structure instead of a generic
-   guess, then calls OpenAI for structured JSON (nodes, edges, groups), validates it
-   (schema, orphan nodes, dangling edges, cycles) with `pydantic` + `networkx`, and
-   streams progress back.
-3. The frontend runs `elkjs` to lay out the validated diagram and renders it with
-   React Flow, themed via a Tailwind class map keyed by node/edge type.
-4. Double-click a node label to rename it in place; drag nodes to adjust layout.
-   These edits are local only — they never call the backend.
-5. The gear icon above the canvas opens a settings panel that controls how the chart
-   is actually built and rendered — nothing here is cosmetic-only:
-   - **Layout algorithm**: `Flowchart` (elk `layered`, directional), `Tree` (elk
-     `mrtree`), or `Compact (16:9)` (elk `rectpacking`, packed to a slide-shaped
-     aspect ratio). Recomputes node positions via elkjs.
-   - **Direction**: top-down or left-right, for the `Flowchart`/`Tree` algorithms
-     (hidden for `Compact`, which has no directional notion).
-   - **Edge style**: curved, straight, right-angle, or rounded right-angle —
-     changes which React Flow path function renders each edge.
-   - **Theme**: swaps the entire app's color palette at runtime (rail, buttons,
-     node/edge colors, PPTX export, and Spec Builder's own shadcn components) via
-     CSS custom properties — not just the canvas.
-   - **Snap to grid**: constrains dragged node positions to a 16px grid.
-6. Export the current diagram to PNG or PDF client-side via the toolbar. **Export
-   PPTX** is only enabled on the Compact (16:9) layout, since that's the one
-   guaranteed to fit a single slide — it generates a native, editable PowerPoint
-   file (PowerPoint's own Flowchart autoshapes, not a picture) via `pptxgenjs`,
-   using the currently selected theme's colors.
+   prompt describing the diagram you want.
+2. The frontend opens a WebSocket to the backend (`/api/ws/generate-diagram-shaper`),
+   which calls OpenAI once for a typed result — a diagram type (linear process, decision
+   flow, hierarchy, architecture, or timeline), a title, and a list of shapes and
+   connectors, each shape with an exact position/size and a kind from a closed vocabulary
+   (oval, rectangle, diamond, dot, cylinder, hexagon) — schema-enforced by OpenAI's
+   structured outputs, not just prompted for. See `docs/architecture.md` for the full
+   data flow.
+3. The backend renders that same JSON to an SVG-in-HTML string and streams it back
+   alongside the JSON; the frontend just displays it in an iframe — no client-side
+   rendering or layout step at all.
+4. Click **Download PPTX** to export. The backend runs the *same* JSON through a second,
+   independent renderer straight into native PowerPoint shapes (`add_shape`,
+   `add_connector`, `add_textbox`) — every box is a movable PPT shape and every label is
+   genuinely editable text, not a screenshot or a glyph outline.
+5. v1 is generate-only: there's no in-app manual editing yet, so re-prompt to change
+   anything before export — editing after that point happens in PowerPoint itself, on the
+   real shapes.
 
 ## Using Sequence Diagram
 
@@ -228,7 +218,7 @@ updates, glossary, known gaps) is documented in
 
 ## More documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — Flowchart Builder's architecture and
+- [`docs/architecture.md`](docs/architecture.md) — Diagram Shaper's architecture and
   data flow.
 - [`docs/spec-builder/`](docs/spec-builder) — Spec Builder's full feature docs, known
   issues, UX rationale, and roadmap.

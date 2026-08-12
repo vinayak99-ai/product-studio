@@ -1,111 +1,51 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Rail } from './components/Rail'
 import { TopBar } from './components/TopBar'
 import { ComingSoonPanel } from './components/ComingSoonPanel'
 import { SpecBuilderPanel } from './components/SpecBuilderPanel'
-import { Sidebar } from './components/Sidebar'
 import { SequenceSidebar } from './components/SequenceSidebar'
-import { FlowchartCanvas, type FlowchartCanvasHandle } from './components/FlowchartCanvas'
 import { SequenceCanvas, type SequenceCanvasHandle } from './components/SequenceCanvas'
 import { InfographicSidebar, type InfographicMode } from './components/InfographicSidebar'
 import { InfographicCanvas } from './components/InfographicCanvas'
 import { DeckCanvas } from './components/DeckCanvas'
 import { DiagramSlideSidebar } from './components/DiagramSlideSidebar'
 import { DiagramSlideCanvas } from './components/DiagramSlideCanvas'
+import { DiagramShaperSidebar } from './components/DiagramShaperSidebar'
+import { DiagramShaperCanvas } from './components/DiagramShaperCanvas'
 import { StorySidebar } from './components/StorySidebar'
 import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
 import { DocQaPage } from './components/DocQaPage'
 import { JiraPage } from './components/JiraPage'
 import { DeepAnalysisPage } from './components/DeepAnalysisPage'
-import { DiagramLegend } from './components/DiagramLegend'
-import { ExportControls } from './components/ExportControls'
 import { SequenceExportControls } from './components/SequenceExportControls'
-import { SettingsPanel } from './components/SettingsPanel'
-import type { LayoutAlgorithm, LayoutDirection } from './lib/elkLayout'
-import type { EdgeShape } from './lib/theme'
-import { applyTheme, type ThemeName } from './lib/themes'
+import { themePalettes, type ThemeName } from './lib/themes'
 import { TOOLS, type ToolId } from './lib/tools'
-import { toBackendDiagram } from './lib/diagramSerialization'
-import type { FlowchartDiagram, GenerateResponse } from './types'
 import type { GenerateSequenceResponse } from './sequenceTypes'
 import type { GenerateDeckResponse, GenerateInfographicResponse } from './infographicTypes'
 import type { StoryScript } from './storyTypes'
 import type { DiagramSlideResult } from './diagramSlideTypes'
+import type { GenerateDiagramShaperResponse } from './diagramShaperTypes'
+
+const THEME_LABEL: Record<ThemeName, string> = {
+  'fidelity-green': 'Green',
+  'slate-blue': 'Blue',
+}
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>('design_thinking')
-  const [result, setResult] = useState<GenerateResponse | null>(null)
   const [sequenceResult, setSequenceResult] = useState<GenerateSequenceResponse | null>(null)
   const [infographicMode, setInfographicMode] = useState<InfographicMode>('single')
   const [infographicResult, setInfographicResult] = useState<GenerateInfographicResponse | null>(null)
   const [deckResult, setDeckResult] = useState<GenerateDeckResponse | null>(null)
   const [storyResult, setStoryResult] = useState<StoryScript | null>(null)
   const [diagramSlideResult, setDiagramSlideResult] = useState<DiagramSlideResult | null>(null)
-  // Right-angle edges as the default look (ELK already computes obstacle-
-  // avoiding ORTHOGONAL routing regardless of algorithm -- 'step' just
-  // renders those waypoints as sharp corners instead of a curve fitted
-  // through them). The layout algorithm/direction values here only matter
-  // before the first diagram exists -- FlowchartCanvas's auto-select race
-  // (see elkLayout.ts's layoutDiagramAuto) picks the actually-cleanest
-  // layout for every fresh generation from here on, overriding these.
-  const [layoutAlgorithm, setLayoutAlgorithm] = useState<LayoutAlgorithm>('layered')
-  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('DOWN')
-  // Once you pick a layout yourself in Settings, that choice sticks for the
-  // rest of the session and FlowchartCanvas stops racing layout candidates
-  // on new diagrams -- see FlowchartCanvas's autoSelectLayout prop.
-  const [layoutManuallySet, setLayoutManuallySet] = useState(false)
-  const [layoutCrossingCount, setLayoutCrossingCount] = useState(0)
-  const [edgeShape, setEdgeShape] = useState<EdgeShape>('step')
+  const [diagramShaperResponse, setDiagramShaperResponse] = useState<GenerateDiagramShaperResponse | null>(null)
+  // Sequence Diagram is the only tool left reading this -- it indexes
+  // themePalettes directly (see SequenceCanvas.tsx/MessageEdge.tsx), not via
+  // any CSS-variable injection, so this is just a plain color choice.
   const [themeName, setThemeName] = useState<ThemeName>('fidelity-green')
-  const [snapToGrid, setSnapToGrid] = useState(false)
-  const canvasRef = useRef<FlowchartCanvasHandle>(null)
   const sequenceCanvasRef = useRef<SequenceCanvasHandle>(null)
-  const flowchartRootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    // Scoped to this tool's own subtree (not document.documentElement) so
-    // picking a diagram theme here can't bleed into Product Studio's shell (Rail,
-    // TopBar) or into other tools like Spec Builder, which share the same
-    // --color-primary/--color-accent token names for their own branding.
-    if (flowchartRootRef.current) {
-      applyTheme(themeName, flowchartRootRef.current)
-    }
-  }, [themeName])
-
-  // Reads the LIVE canvas state (manual edits included), not `result.diagram`
-  // (the original generation) -- an "Edit with AI" instruction should apply
-  // to whatever's actually on screen right now.
-  const getCurrentDiagramForEdit = (): FlowchartDiagram | null => {
-    const flow = canvasRef.current?.getFlow()
-    if (!flow) return null
-    return toBackendDiagram(flow.nodes, flow.edges, flow.groups, flow.categories)
-  }
-
-  // Deliberately NOT setResult -- that would replace the `diagram` prop and
-  // re-trigger FlowchartCanvas's full ELK layout effect, discarding manual
-  // positions. applyEdit merges the edited diagram into the live canvas
-  // state instead (see reconcileDiagram.ts).
-  const handleEditResult = (diagram: FlowchartDiagram) => {
-    canvasRef.current?.applyEdit(diagram)
-  }
-
-  // Settings-facing setters -- distinct from handleAutoLayoutPicked below,
-  // which writes the same layoutAlgorithm/layoutDirection state but must
-  // NOT flip layoutManuallySet, or every auto-picked layout would disable
-  // auto-selection for every diagram after the first.
-  const handleLayoutAlgorithmChange = (value: LayoutAlgorithm) => {
-    setLayoutAlgorithm(value)
-    setLayoutManuallySet(true)
-  }
-  const handleLayoutDirectionChange = (value: LayoutDirection) => {
-    setLayoutDirection(value)
-    setLayoutManuallySet(true)
-  }
-  const handleAutoLayoutPicked = (algorithm: LayoutAlgorithm, direction: LayoutDirection) => {
-    setLayoutAlgorithm(algorithm)
-    setLayoutDirection(direction)
-  }
 
   const comingSoonTool = TOOLS.find((tool) => tool.id === activeTool && tool.status === 'soon')
 
@@ -115,78 +55,46 @@ function App() {
       <div className="flex min-h-0 flex-1 flex-col">
         <TopBar activeTool={activeTool} />
 
-        {/* Always mounted (just hidden) so React Flow keeps its layout/drag state
-            when the user switches to another tool and back. */}
-        <div
-          ref={flowchartRootRef}
-          className={`min-h-0 flex-1 ${activeTool === 'flowchart' ? 'flex' : 'hidden'}`}
-        >
-          <Sidebar
-            onResult={setResult}
-            issues={result?.issues ?? []}
-            hasDiagram={!!result}
-            getCurrentDiagram={getCurrentDiagramForEdit}
-            onEditResult={handleEditResult}
-          />
+        {/* Typed shapes/connectors (see backend/app/diagram_shaper_models.py)
+            generated once, rendered twice, independently: to SVG for this
+            preview (diagram_shaper_svg.py) and to native PPTX shapes for
+            export (diagram_shaper_pptx.py). Neither renderer parses the
+            other's output, so they can't drift apart -- and the export is
+            real, individually editable PowerPoint shapes and text, not a
+            screenshot. */}
+        <div className={`min-h-0 flex-1 ${activeTool === 'diagram_shaper' ? 'flex' : 'hidden'}`}>
+          <DiagramShaperSidebar onResult={setDiagramShaperResponse} />
           <main className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-2">
-              <h1 className="text-sm font-semibold text-neutral-900">Diagram</h1>
-              <div className="flex items-center gap-2">
-                <ExportControls
-                  targetRef={canvasRef}
-                  disabled={!result}
-                  layoutAlgorithm={layoutAlgorithm}
-                  themeName={themeName}
-                />
-                <SettingsPanel
-                  layoutAlgorithm={layoutAlgorithm}
-                  onLayoutAlgorithmChange={handleLayoutAlgorithmChange}
-                  layoutDirection={layoutDirection}
-                  onLayoutDirectionChange={handleLayoutDirectionChange}
-                  edgeShape={edgeShape}
-                  onEdgeShapeChange={setEdgeShape}
-                  themeName={themeName}
-                  onThemeNameChange={setThemeName}
-                  snapToGrid={snapToGrid}
-                  onSnapToGridChange={setSnapToGrid}
-                />
-              </div>
-            </div>
-            {layoutCrossingCount > 0 ? (
-              <p className="border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-xs text-amber-800">
-                {layoutCrossingCount} edge crossing{layoutCrossingCount === 1 ? '' : 's'} in this layout -- try Tree
-                layout or repositioning nodes manually.
-              </p>
-            ) : null}
-            <div className="min-h-0 flex-1">
-              <FlowchartCanvas
-                ref={canvasRef}
-                diagram={result?.diagram ?? null}
-                layoutAlgorithm={layoutAlgorithm}
-                layoutDirection={layoutDirection}
-                edgeShape={edgeShape}
-                themeName={themeName}
-                snapToGrid={snapToGrid}
-                autoSelectLayout={!layoutManuallySet}
-                onAutoLayoutPicked={handleAutoLayoutPicked}
-                onLayoutQuality={setLayoutCrossingCount}
-              />
-            </div>
-            {result ? <DiagramLegend diagram={result.diagram} /> : null}
+            <DiagramShaperCanvas response={diagramShaperResponse} />
           </main>
         </div>
 
-        {/* Sequence diagrams don't share FlowchartCanvas's ELK/edge-shape
-            machinery (no layout algorithm, no ELK-routed edge shapes -- see
-            sequenceLayout.ts), so this is its own canvas + sidebar pair
-            rather than reusing Flowchart Builder's, but the same
-            always-mounted+hidden pattern keeps its state across tool switches. */}
+        {/* Sequence diagrams build their own canvas directly on @xyflow/react
+            (no layout algorithm/settings panel of their own), but the same
+            always-mounted+hidden pattern keeps state across tool switches.
+            The theme picker here is the only theme control left in the app --
+            it used to live in Flowchart Builder's Settings panel, which
+            Sequence had no picker of its own and just inherited themeName
+            from. */}
         <div className={`min-h-0 flex-1 ${activeTool === 'sequence' ? 'flex' : 'hidden'}`}>
           <SequenceSidebar onResult={setSequenceResult} issues={sequenceResult?.issues ?? []} />
           <main className="flex min-w-0 flex-1 flex-col">
             <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-2">
               <h1 className="text-sm font-semibold text-neutral-900">Sequence Diagram</h1>
-              <SequenceExportControls targetRef={sequenceCanvasRef} disabled={!sequenceResult} />
+              <div className="flex items-center gap-2">
+                <select
+                  value={themeName}
+                  onChange={(event) => setThemeName(event.target.value as ThemeName)}
+                  className="rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-xs font-medium text-neutral-900 outline-none focus:border-primary"
+                >
+                  {(Object.keys(themePalettes) as ThemeName[]).map((name) => (
+                    <option key={name} value={name}>
+                      {THEME_LABEL[name]}
+                    </option>
+                  ))}
+                </select>
+                <SequenceExportControls targetRef={sequenceCanvasRef} disabled={!sequenceResult} />
+              </div>
             </div>
             <div className="min-h-0 flex-1">
               <SequenceCanvas ref={sequenceCanvasRef} diagram={sequenceResult?.diagram ?? null} themeName={themeName} />

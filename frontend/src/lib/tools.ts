@@ -3,9 +3,9 @@ import {
   DataIcon,
   DeepAnalysisIcon,
   DesignThinkingIcon,
+  DiagramShaperIcon,
   DiagramSlideIcon,
   DocQaIcon,
-  FlowchartIcon,
   InfographicIcon,
   JiraIcon,
   SequenceIcon,
@@ -18,7 +18,7 @@ export type ToolId =
   | 'spec'
   | 'deep_analysis'
   | 'sequence'
-  | 'flowchart'
+  | 'diagram_shaper'
   | 'diagram_slide'
   | 'infographic'
   | 'story'
@@ -69,10 +69,14 @@ export const TOOLS: ToolDef[] = [
     icon: SequenceIcon,
   },
   {
-    id: 'flowchart',
-    label: 'Flowchart Builder',
+    id: 'diagram_shaper',
+    label: 'Diagram Shaper',
     status: 'ready',
-    icon: FlowchartIcon,
+    icon: DiagramShaperIcon,
+    description:
+      'Describe a process, decision flow, hierarchy, architecture, or timeline and get a ' +
+      'diagram built from real, typed shapes and connectors -- exported as native, individually ' +
+      'editable PowerPoint shapes and text, not a flattened image.',
   },
   {
     id: 'diagram_slide',

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from openai import OpenAIError
 from pydantic import ValidationError
 
-from app.models import GenerateRequest
+from app.shared_models import GenerateRequest
 from app.sequence_llm import generate_sequence_diagram
 from app.sequence_models import GenerateSequenceResponse
 from app.sequence_validation import validate_sequence_diagram

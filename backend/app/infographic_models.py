@@ -2,7 +2,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from app.models import ValidationIssue
+from app.shared_models import ValidationIssue
 
 WHEEL_ITEM_COUNT = 5
 COMPARISON_MIN_COLUMNS = 2
