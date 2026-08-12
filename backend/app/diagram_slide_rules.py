@@ -47,7 +47,11 @@ no real field-level or cardinality detail, use architecture instead.
 from one state to another, including loops back to an earlier or the same state (e.g. an order status \
 lifecycle, an account/subscription lifecycle, a job's run states). Best when the material describes a \
 single entity's *modes over time* with real transition conditions, not a one-way sequence -- if every step \
-happens exactly once with no loops or re-entry, use linear_process or decision_flow instead."""
+happens exactly once with no loops or re-entry, use linear_process or decision_flow instead.
+- loop: a circular operating cycle where the last step feeds back into the first and every pass accumulates \
+shared state (e.g. a growth flywheel, a PDCA/OODA cycle, a recurring release cadence). Best when the material \
+genuinely has no start or end and each cycle deposits something into a common pool -- if the "cycle" actually \
+terminates somewhere, use decision_flow or linear_process instead."""
 
 # Shared rules, ported from style-guide.md, re-anchored to Product Studio's
 # validated brand palette (infographic_template.py's BRAND_COLORS: primary
@@ -283,4 +287,25 @@ Anti-patterns: do not leave any transition arrow unlabeled; do not omit the init
 not flatten loops/self-transitions into a one-way flow; do not draw two separate arrows for a \
 transition that goes both ways between the same two states -- use one line with a label on each \
 direction instead.""",
+    "loop": """## loop rules
+
+Place 5-8 stations (plain rectangles) at equal angular intervals around a circle, starting at the top \
+and proceeding clockwise. Put one larger, filled hub at the center of that circle, representing the \
+shared state the cycle accumulates.
+
+Connect each station to the next with a solid curved arrow following the ring, all flowing clockwise. \
+Then draw a dashed line from every station in to the hub -- this is the defining signal of a loop \
+diagram (it shows each pass writing back to shared state); a loop with only the ring arrows and no \
+spokes just reads as a circular process, not a flywheel. Keep spoke and ring lines from crossing each \
+other or cutting through the hub.
+
+Give the accent color to at most one station -- an editorial gate or the stage the surrounding content \
+is actually about -- never to more than one, and never to the hub itself (the hub stays the plain dark \
+fill every loop shares).
+
+Anti-patterns: do not draw more than one hub (that means two separate systems -- split into two \
+diagrams); do not make spokes solid (a solid spoke reads as another process step, not a write-back); \
+do not space stations unevenly or mix curved ring segments with straight ones; do not exceed 8 \
+stations -- if the material has more stages, group them or split into an overview + detail pair; do \
+not use this type for a cycle that has a real end -- that is a decision_flow.""",
 }

@@ -8,6 +8,7 @@ export type DiagramSlideType =
   | 'process'
   | 'er'
   | 'state'
+  | 'loop'
 
 export interface DiagramSlideResult {
   diagram_type: DiagramSlideType

@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<DiagramSlideType, string> = {
   process: 'Process',
   er: 'ER diagram',
   state: 'State diagram',
+  loop: 'Loop',
 }
 
 export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {

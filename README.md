@@ -10,7 +10,7 @@ config.
 |---|---|---|
 | **Sequence Diagram** | Ready | Source material + a prompt → an interactive sequence diagram (participants, sync/return messages), exportable to PNG. |
 | **Infographic Builder** | Ready | Source material + a prompt → a single on-brand infographic slide (14 templates) or a full multi-slide PRD-to-deck PPTX that always opens with a title/cover slide and a paginated agenda. |
-| **Diagram Slides** | Ready | Source material + a prompt → a hand-composed diagram -- linear process, decision flow, hierarchy, architecture, timeline, swimlane, process, ER diagram, or state diagram (shape encodes type, one reserved accent, no layout-engine routing) -- rendered server-side and exported full-bleed into a PPTX slide. |
+| **Diagram Slides** | Ready | Source material + a prompt → a hand-composed diagram -- linear process, decision flow, hierarchy, architecture, timeline, swimlane, process, ER diagram, state diagram, or loop (shape encodes type, one reserved accent, no layout-engine routing) -- rendered server-side and exported full-bleed into a PPTX slide. |
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
 | Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Infographic Builder's export pipeline. |

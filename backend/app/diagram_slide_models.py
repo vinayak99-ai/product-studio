@@ -12,6 +12,7 @@ DiagramSlideType = Literal[
     "process",
     "er",
     "state",
+    "loop",
 ]
 
 
