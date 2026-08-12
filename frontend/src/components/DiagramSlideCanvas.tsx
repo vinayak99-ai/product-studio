@@ -16,6 +16,8 @@ const TYPE_LABEL: Record<DiagramSlideType, string> = {
   timeline: 'Timeline',
   swimlane: 'Swimlane',
   process: 'Process',
+  er: 'ER diagram',
+  state: 'State diagram',
 }
 
 export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {

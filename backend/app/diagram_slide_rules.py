@@ -38,7 +38,16 @@ split by actor/team, use linear_process or decision_flow instead.
 - process: a multi-actor process where the point is *what* moves between steps -- a document, dataset, or \
 payload handed from one actor or system to the next (e.g. a data pipeline with named handoffs, an approval \
 chain with attached documents). Best when every step-to-step connector needs its own "what's exchanged" \
-label; if the material has no real payload to name, use swimlane or decision_flow instead."""
+label; if the material has no real payload to name, use swimlane or decision_flow instead.
+- er: a data model of entities (tables/objects), their fields, and the relationships between them, with \
+cardinality (e.g. a database schema, a domain model for a new feature). Best when the material's organizing \
+principle is *what data exists and how records relate*, not a process or system-call diagram -- if there's \
+no real field-level or cardinality detail, use architecture instead.
+- state: a state machine -- the distinct states something can be in and the events/conditions that move it \
+from one state to another, including loops back to an earlier or the same state (e.g. an order status \
+lifecycle, an account/subscription lifecycle, a job's run states). Best when the material describes a \
+single entity's *modes over time* with real transition conditions, not a one-way sequence -- if every step \
+happens exactly once with no loops or re-entry, use linear_process or decision_flow instead."""
 
 # Shared rules, ported from style-guide.md, re-anchored to Product Studio's
 # validated brand palette (infographic_template.py's BRAND_COLORS: primary
@@ -233,4 +242,45 @@ actor or every step.
 Anti-patterns: do not draw a placeholder box in a cell where an actor has no involvement in that step \
 -- leave it blank; do not leave any connector unlabeled with what it carries; do not use diagonal \
 connectors; do not color-code every row by actor (the row label already shows ownership).""",
+    "er": """## er rules
+
+Each entity is a rectangle with a title bar (the entity/table name, bold) and a short list of fields \
+stacked below it, one per row -- name and type (e.g. `id : uuid`, `email : string`). Mark the primary \
+key field with a small "PK" tag and any foreign key field with an "FK" tag; do not mark every field, \
+only keys. Pick the 3-6 fields that matter to the point being made, not the entity's full real-world \
+schema -- a field list exists to establish shape, not to be exhaustive.
+
+Connect related entities with a single line (not an arrow -- relationships are bidirectional), and \
+label each end of the line with its cardinality (`1`, `many`, `0..1`, etc.) right where the line meets \
+the box. Route lines with a right-angle bend when entities aren't directly across from each other so \
+lines don't cross through unrelated boxes.
+
+Give the accent color to exactly one entity (the one the surrounding content is actually about) or to \
+one relationship line if the diagram is really about that connection -- never to every entity.
+
+Anti-patterns: do not list every column of a real table -- pick a representative subset; do not draw a \
+relationship line without cardinality labels on both ends; do not use an arrowhead on a relationship \
+line (that implies direction, which ER relationships don't have); do not cram more than 5-6 entities \
+onto one diagram -- if the material has more, pick the ones relevant to the point.""",
+    "state": """## state rules
+
+Each state is a rounded rectangle or pill labeled with the state's name. Mark the initial state with a \
+small filled circle connected by a short arrow into it (standard state-machine notation); if the \
+material has a genuine terminal state, mark it with a circle-in-a-ring. Do not force every diagram to \
+have both -- only draw the markers the material actually supports.
+
+Every transition is an arrow labeled with the event or condition that triggers it (e.g. `payment \
+received`, `timeout after 24h`) -- never a bare unlabeled arrow, since an unlabeled arrow between \
+states is ambiguous. A state that can transition back to itself is a self-loop: a short arrow that \
+leaves and re-enters the same box, curved out to the side so it doesn't overlap the box's own border. \
+Let transitions curve back to an earlier state when the material genuinely loops -- do not restructure \
+a cyclical state machine into a fake top-to-bottom sequence just to avoid backward arrows.
+
+Give the accent color to exactly one state -- the current state or the one the surrounding content is \
+about -- never to every state.
+
+Anti-patterns: do not leave any transition arrow unlabeled; do not omit the initial-state marker; do \
+not flatten loops/self-transitions into a one-way flow; do not draw two separate arrows for a \
+transition that goes both ways between the same two states -- use one line with a label on each \
+direction instead.""",
 }

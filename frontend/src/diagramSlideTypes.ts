@@ -6,6 +6,8 @@ export type DiagramSlideType =
   | 'timeline'
   | 'swimlane'
   | 'process'
+  | 'er'
+  | 'state'
 
 export interface DiagramSlideResult {
   diagram_type: DiagramSlideType
