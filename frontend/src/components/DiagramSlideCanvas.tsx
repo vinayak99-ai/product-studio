@@ -14,6 +14,8 @@ const TYPE_LABEL: Record<DiagramSlideType, string> = {
   hierarchy: 'Hierarchy',
   architecture: 'Architecture',
   timeline: 'Timeline',
+  swimlane: 'Swimlane',
+  process: 'Process',
 }
 
 export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {

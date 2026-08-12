@@ -8,6 +8,8 @@ DiagramSlideType = Literal[
     "hierarchy",
     "architecture",
     "timeline",
+    "swimlane",
+    "process",
 ]
 
 

@@ -30,7 +30,15 @@ them (e.g. services, databases, integrations, an infrastructure diagram). Best w
 describes things that exist at the same time and talk to each other, not a sequence of events.
 - timeline: a set of dated or ordered milestones along a single axis (e.g. a project timeline, a \
 company history, a release roadmap tied to dates). Best when the content's organizing principle \
-is *when*, not *what depends on what*."""
+is *when*, not *what depends on what*.
+- swimlane: a cross-functional process where the point is *who* does each step and where work hands off \
+between teams (e.g. a vendor onboarding process, a multi-team release process, a RACI-style workflow). \
+Best when the material's organizing structure is ownership, not just order -- if there's no meaningful \
+split by actor/team, use linear_process or decision_flow instead.
+- process: a multi-actor process where the point is *what* moves between steps -- a document, dataset, or \
+payload handed from one actor or system to the next (e.g. a data pipeline with named handoffs, an approval \
+chain with attached documents). Best when every step-to-step connector needs its own "what's exchanged" \
+label; if the material has no real payload to name, use swimlane or decision_flow instead."""
 
 # Shared rules, ported from style-guide.md, re-anchored to Product Studio's
 # validated brand palette (infographic_template.py's BRAND_COLORS: primary
@@ -188,4 +196,41 @@ Anti-patterns: do not color-code milestones by category (that dilutes the one \
 accent's meaning -- use a shape variant instead if category truly must be \
 shown); do not compress the axis so labels overlap -- wrap to a second row of \
 labels below the axis instead of shrinking text.""",
+    "swimlane": """## swimlane rules
+
+Divide the canvas into horizontal lanes, one per actor/team, each spanning the full width and \
+labeled at the left edge. Separate lanes with a thin 1px muted hairline. Size lanes evenly unless \
+one team genuinely has more steps than the others -- then give it proportionally more height, never \
+so little that its steps overlap.
+
+Each step is a rounded rectangle placed entirely within its owning lane -- never straddling two \
+lanes; a step belongs to exactly one team. Flow left-to-right within a lane. Arrows that cross from \
+one lane into another represent a handoff between teams and are the most important lines in the \
+diagram -- label every handoff with what's being handed off.
+
+Give the accent color to the single most consequential handoff (the one the surrounding slide \
+content is about) or to one team's lane if the diagram is really about that team's part -- never to \
+every lane, never to every step.
+
+Anti-patterns: do not let a step span two lanes (pick the one team actually responsible); do not \
+leave any lane unlabeled; do not let the flow backtrack repeatedly between lanes -- reorder the \
+steps so the diagram reads mostly left-to-right.""",
+    "process": """## process rules
+
+Lay out as a grid: columns are ordered steps (numbered, left to right), rows are the actors or \
+systems involved. Place a node only in the cells where that actor is actually involved in that step \
+-- leave every other cell empty, never a placeholder box. Each node is a rounded rectangle carrying \
+a short actor/role tag plus the step's action.
+
+Connectors always name what actually moves between two nodes (a document, a dataset, a payload, a \
+signal) -- never a bare unlabeled line. Route a connector with a single right-angle bend rather than \
+a diagonal when it crosses rows.
+
+Give the accent color to exactly one node -- the step the surrounding content is actually about -- \
+and, if useful, match that accent on the connectors directly touching it -- never color-code every \
+actor or every step.
+
+Anti-patterns: do not draw a placeholder box in a cell where an actor has no involvement in that step \
+-- leave it blank; do not leave any connector unlabeled with what it carries; do not use diagonal \
+connectors; do not color-code every row by actor (the row label already shows ownership).""",
 }

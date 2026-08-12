@@ -1,4 +1,11 @@
-export type DiagramSlideType = 'linear_process' | 'decision_flow' | 'hierarchy' | 'architecture' | 'timeline'
+export type DiagramSlideType =
+  | 'linear_process'
+  | 'decision_flow'
+  | 'hierarchy'
+  | 'architecture'
+  | 'timeline'
+  | 'swimlane'
+  | 'process'
 
 export interface DiagramSlideResult {
   diagram_type: DiagramSlideType
