@@ -1,3 +1,18 @@
+import asyncio
+import sys
+
+# Diagram Slides (routes/diagram_slide.py) launches headless Chromium via
+# Playwright's async API to render a diagram to PNG, which needs subprocess
+# support from the running event loop. Plain `uvicorn app.main:app` on
+# Windows (no uvloop there) runs its main loop on WindowsSelectorEventLoop,
+# which doesn't implement subprocess creation -- regardless of which thread
+# or which Playwright API triggers it, that raises NotImplementedError. This
+# has to run before uvicorn creates its event loop, so it's set here at
+# import time, before the ASGI app object below is even built. No-op on
+# non-Windows platforms.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
