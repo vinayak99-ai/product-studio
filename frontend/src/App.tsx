@@ -38,9 +38,14 @@ function App() {
   const [infographicResult, setInfographicResult] = useState<GenerateInfographicResponse | null>(null)
   const [deckResult, setDeckResult] = useState<GenerateDeckResponse | null>(null)
   const [storyResult, setStoryResult] = useState<StoryScript | null>(null)
-  const [layoutAlgorithm, setLayoutAlgorithm] = useState<LayoutAlgorithm>('layered')
+  // Compact + right-angle edges as the default look: shorter, orthogonally
+  // routed edges (ELK already computes obstacle-avoiding ORTHOGONAL routing
+  // regardless of algorithm -- 'step' just renders those waypoints as sharp
+  // corners instead of a curve fitted through them) on the denser,
+  // slide-shaped layout, rather than the more spread-out layered default.
+  const [layoutAlgorithm, setLayoutAlgorithm] = useState<LayoutAlgorithm>('rectpacking')
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('DOWN')
-  const [edgeShape, setEdgeShape] = useState<EdgeShape>('bezier')
+  const [edgeShape, setEdgeShape] = useState<EdgeShape>('step')
   const [themeName, setThemeName] = useState<ThemeName>('fidelity-green')
   const [snapToGrid, setSnapToGrid] = useState(false)
   const canvasRef = useRef<FlowchartCanvasHandle>(null)
