@@ -207,15 +207,15 @@ way.
 
 Three collections to create once collection CRUD exists:
 
-- **Generic Context** — the always-on, cross-project reference collection
+- **Firm Context** — the always-on, cross-project reference collection
   (the "global" collection from the cross-collection search design; default
   included alongside whichever project collection is active).
-- **ITAC** — project-specific collection.
-- **Digital DA Work** — project-specific collection.
+- **Project Context** — project-specific collection.
+- **Systems Info** — project-specific collection.
 
 No special-casing needed in code for any of these three — they're created
 through the same collection-creation flow as any future collection. The
-only behavior that treats "Generic Context" differently is the UI default
+only behavior that treats "Firm Context" differently is the UI default
 described under Cross-collection search below (pre-checked, not hardcoded
 by name — a `is_default_included` flag on the collection, settable by the
 user on any collection, happens to be turned on for this one at creation).
@@ -351,7 +351,7 @@ still open:
 1. **Foundation**: `kb_models.py`, `kb_persistence.py`, `kb_vector_store.py`
    wired to a real Chroma instance, collection CRUD routes + UI (create/
    list/rename/delete collections, no documents yet). Create the three
-   initial collections (Generic Context, ITAC, Digital DA Work) once this
+   initial collections (Firm Context, Project Context, Systems Info) once this
    exists.
 2. **Ingestion, single collection**: markdown-only document upload,
    structure-aware chunking, single-collection search + citations,
@@ -360,7 +360,7 @@ still open:
    drift warnings, replace/delete lifecycle including the catalog's wider
    blast radius.
 4. **Cross-collection search**: multi-select picker, federated query +
-   merge/re-rank, Generic Context default-included behavior.
+   merge/re-rank, Firm Context default-included behavior.
 5. **File type expansion (later, not v1)**: xlsx/csv extraction, docx table
    fix, pptx read path — in that priority order, each addable independently
    once the markdown-only core loop from steps 1-4 is proven.
