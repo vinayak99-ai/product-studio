@@ -3,6 +3,7 @@ import {
   DataIcon,
   DeepAnalysisIcon,
   DesignThinkingIcon,
+  DiagramSlideIcon,
   DocQaIcon,
   FlowchartIcon,
   InfographicIcon,
@@ -18,6 +19,7 @@ export type ToolId =
   | 'deep_analysis'
   | 'sequence'
   | 'flowchart'
+  | 'diagram_slide'
   | 'infographic'
   | 'story'
   | 'doc_qa'
@@ -71,6 +73,16 @@ export const TOOLS: ToolDef[] = [
     label: 'Flowchart Builder',
     status: 'ready',
     icon: FlowchartIcon,
+  },
+  {
+    id: 'diagram_slide',
+    label: 'Diagram Slides',
+    status: 'ready',
+    icon: DiagramSlideIcon,
+    description:
+      'Describe a process, decision flow, hierarchy, architecture, or timeline and get a ' +
+      'hand-composed diagram -- shape encodes meaning, one accent color, no crisscrossing ' +
+      'layout-engine routing -- exported as a full-bleed slide image.',
   },
   {
     id: 'infographic',

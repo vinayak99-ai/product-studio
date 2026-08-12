@@ -111,3 +111,15 @@ export function DataIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export function DiagramSlideIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <rect x="2.5" y="4.5" width="19" height="12" rx="1.5" />
+      <rect x="5.5" y="7" width="4.5" height="3" rx="0.8" />
+      <path d="M10 8.5h3.5" />
+      <path d="m17 8.5-2 1.2 2 1.2Z" strokeLinejoin="round" />
+      <path d="M9.5 19.5h5" strokeLinecap="round" />
+    </svg>
+  )
+}

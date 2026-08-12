@@ -1,6 +1,7 @@
 import type { DiagramStyle, ExtractResponse, FlowchartDiagram, GenerateResponse, WsProgressMessage } from '../types'
 import type { SequenceWsProgressMessage } from '../sequenceTypes'
 import type { DeckWsProgressMessage, InfographicDiagram, InfographicWsProgressMessage } from '../infographicTypes'
+import type { DiagramSlideResult, DiagramSlideWsProgressMessage } from '../diagramSlideTypes'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
@@ -141,6 +142,49 @@ export function openDeckGenerateSocket(
   }
 
   return () => socket.close()
+}
+
+export function openDiagramSlideGenerateSocket(
+  sourceMaterial: string,
+  prompt: string,
+  onMessage: (message: DiagramSlideWsProgressMessage) => void,
+  onError: () => void,
+): () => void {
+  const socket = new WebSocket(`${WS_BASE}/api/ws/generate-diagram-slide`)
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ source_material: sourceMaterial, prompt }))
+  }
+  socket.onmessage = (event) => {
+    onMessage(JSON.parse(event.data) as DiagramSlideWsProgressMessage)
+  }
+  socket.onerror = () => {
+    onError()
+  }
+
+  return () => socket.close()
+}
+
+// Like exportInfographicPptx: the deliverable is a real .pptx built server-side
+// (here by rendering `html` with Playwright and embedding the screenshot
+// full-bleed), so this fetches the binary and triggers a download rather than
+// rendering anything client-side.
+export async function exportDiagramSlidePptx(result: DiagramSlideResult): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/diagram-slide/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result),
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'diagram-slide.pptx'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 const INFOGRAPHIC_FILENAMES: Record<InfographicDiagram['template'], string> = {

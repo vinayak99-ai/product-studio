@@ -10,6 +10,8 @@ import { SequenceCanvas, type SequenceCanvasHandle } from './components/Sequence
 import { InfographicSidebar, type InfographicMode } from './components/InfographicSidebar'
 import { InfographicCanvas } from './components/InfographicCanvas'
 import { DeckCanvas } from './components/DeckCanvas'
+import { DiagramSlideSidebar } from './components/DiagramSlideSidebar'
+import { DiagramSlideCanvas } from './components/DiagramSlideCanvas'
 import { StorySidebar } from './components/StorySidebar'
 import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
@@ -29,6 +31,7 @@ import type { FlowchartDiagram, GenerateResponse } from './types'
 import type { GenerateSequenceResponse } from './sequenceTypes'
 import type { GenerateDeckResponse, GenerateInfographicResponse } from './infographicTypes'
 import type { StoryScript } from './storyTypes'
+import type { DiagramSlideResult } from './diagramSlideTypes'
 
 function App() {
   const [activeTool, setActiveTool] = useState<ToolId>('design_thinking')
@@ -38,6 +41,7 @@ function App() {
   const [infographicResult, setInfographicResult] = useState<GenerateInfographicResponse | null>(null)
   const [deckResult, setDeckResult] = useState<GenerateDeckResponse | null>(null)
   const [storyResult, setStoryResult] = useState<StoryScript | null>(null)
+  const [diagramSlideResult, setDiagramSlideResult] = useState<DiagramSlideResult | null>(null)
   // Right-angle edges as the default look (ELK already computes obstacle-
   // avoiding ORTHOGONAL routing regardless of algorithm -- 'step' just
   // renders those waypoints as sharp corners instead of a curve fitted
@@ -213,6 +217,18 @@ function App() {
                 }
               />
             )}
+          </main>
+        </div>
+
+        {/* Hand-composed SVG under strict style/layout rules, not a
+            graph-layout algorithm (see backend/app/diagram_slide_rules.py) --
+            the preview iframe renders the exact same HTML that gets
+            screenshotted server-side for the export, so what's shown here is
+            what ends up in the slide. */}
+        <div className={`min-h-0 flex-1 ${activeTool === 'diagram_slide' ? 'flex' : 'hidden'}`}>
+          <DiagramSlideSidebar onResult={setDiagramSlideResult} />
+          <main className="flex min-w-0 flex-1 flex-col">
+            <DiagramSlideCanvas result={diagramSlideResult} />
           </main>
         </div>
 
