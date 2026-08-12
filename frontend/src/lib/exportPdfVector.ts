@@ -19,11 +19,19 @@ import type { DiagramFlowEdge } from '../components/edges/DiagramEdgeComponent'
 // raster exportPdf in lib/export.ts already used for its viewport-sized
 // page) rather than shrinking the diagram to fit a fixed page.
 
-const MARGIN_PX = 60
+const MARGIN_PX = 96
 const TITLE_HEIGHT_PX = 70
 const LEGEND_ROW_HEIGHT_PX = 34
 const LEGEND_DOT_SIZE_PX = 12
 const LEGEND_CHIP_GAP_PX = 26
+
+// A handful of things can render a few px past a node's own box -- the
+// external-vendor badge (drawn straddling the top-right corner), a group
+// box's title chip (drawn a few px above the box's top edge), and an edge
+// label chip centered on an edge midpoint. Inflating the computed diagram
+// extent by this much before the fixed margin is added keeps the margin a
+// true, untouched gap even when one of those sits on the outermost node.
+const SHAPE_OVERFLOW_PX = 24
 
 // A page beyond this on either axis would be an unreasonable PDF (and slow
 // to rasterize in a viewer) -- past this, the whole diagram is scaled down
@@ -117,17 +125,21 @@ export async function exportPdfVector(
   const nodeHeight = (node: DiagramFlowNode) => node.data.height ?? node.height ?? NODE_HEIGHT
 
   // Group box extents count toward the layout bounds too -- their padding
-  // reaches slightly beyond their tightest-fit member nodes.
-  const minX = Math.min(...nodes.map((node) => node.position.x), ...groupBoxes.map((box) => box.x))
-  const minY = Math.min(...nodes.map((node) => node.position.y), ...groupBoxes.map((box) => box.y))
-  const maxX = Math.max(
-    ...nodes.map((node) => node.position.x + nodeWidth(node)),
-    ...groupBoxes.map((box) => box.x + box.width),
-  )
-  const maxY = Math.max(
-    ...nodes.map((node) => node.position.y + nodeHeight(node)),
-    ...groupBoxes.map((box) => box.y + box.height),
-  )
+  // reaches slightly beyond their tightest-fit member nodes. The
+  // SHAPE_OVERFLOW_PX pad then covers badges/label chips that can poke a
+  // few px past whichever node/group box ends up outermost.
+  const minX = Math.min(...nodes.map((node) => node.position.x), ...groupBoxes.map((box) => box.x)) - SHAPE_OVERFLOW_PX
+  const minY = Math.min(...nodes.map((node) => node.position.y), ...groupBoxes.map((box) => box.y)) - SHAPE_OVERFLOW_PX
+  const maxX =
+    Math.max(
+      ...nodes.map((node) => node.position.x + nodeWidth(node)),
+      ...groupBoxes.map((box) => box.x + box.width),
+    ) + SHAPE_OVERFLOW_PX
+  const maxY =
+    Math.max(
+      ...nodes.map((node) => node.position.y + nodeHeight(node)),
+      ...groupBoxes.map((box) => box.y + box.height),
+    ) + SHAPE_OVERFLOW_PX
   const diagramW = Math.max(maxX - minX, 1)
   const diagramH = Math.max(maxY - minY, 1)
 
