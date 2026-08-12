@@ -11,6 +11,7 @@ config.
 | **Flowchart Builder** | Ready | Source material + a prompt → an interactive, editable flowchart, laid out and rendered entirely client-side. |
 | **Sequence Diagram** | Ready | Source material + a prompt → an interactive sequence diagram (participants, sync/return messages), exportable to PNG. |
 | **Infographic Builder** | Ready | Source material + a prompt → a single on-brand infographic slide (14 templates) or a full multi-slide PRD-to-deck PPTX that always opens with a title/cover slide and a paginated agenda. |
+| **Diagram Slides** | Ready | Source material + a prompt → a hand-composed process/decision/hierarchy/architecture/timeline diagram (shape encodes type, one reserved accent, no layout-engine routing), rendered server-side and exported full-bleed into a PPTX slide. |
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
 | Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Flowchart Builder's export pipeline. |
@@ -26,6 +27,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt   # includes Spec Builder's Jira integration dep
+playwright install chromium       # for Diagram Slides' server-side rendering
 cp .env.example .env              # fill in the keys below
 uvicorn app.main:app --reload --port 8000
 ```
@@ -34,6 +36,28 @@ Supports Python 3.9 through 3.13. On 3.9, Pydantic models rely on `from __future
 import annotations` plus the `eval_type_backport` dependency to resolve modern
 `X | None`-style type hints, which aren't natively supported until 3.10 — both are
 already wired up, no extra setup needed.
+
+**On Windows**, use `python run.py` (or `.\start.ps1`, which also activates the venv)
+instead of the plain `uvicorn` command above:
+
+```powershell
+cd backend
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+playwright install chromium
+copy .env.example .env
+python run.py
+```
+
+Plain `uvicorn app.main:app --reload` on Windows runs on `WindowsSelectorEventLoop`,
+which can't launch subprocesses — and Diagram Slides' PPTX export launches headless
+Chromium via Playwright to render each diagram, which needs exactly that. `run.py`
+forces the Proactor event loop policy before uvicorn is even imported, then starts
+uvicorn programmatically, which a module-level fix inside `app/main.py` can't
+reliably guarantee with `--reload` (uvicorn's reloader can create its event loop
+before `app.main` gets re-imported). Every other tool works the same either way —
+this only affects Diagram Slides' export button on Windows.
 
 ```bash
 # Frontend — one Vite dev server for every tool, in a second terminal
