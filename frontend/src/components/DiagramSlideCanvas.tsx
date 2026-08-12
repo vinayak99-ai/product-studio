@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { exportDiagramSlidePptx } from '../lib/api'
 import type { DiagramSlideResult, DiagramSlideType } from '../diagramSlideTypes'
 import { EmptyCanvasState } from './EmptyCanvasState'
@@ -18,6 +18,25 @@ const TYPE_LABEL: Record<DiagramSlideType, string> = {
 
 export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {
   const [busy, setBusy] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const previewRef = useRef<HTMLDivElement>(null)
+
+  // Tracks the *browser's* fullscreen state (not just our own toggle click)
+  // so the button/label stay correct if the user exits via Escape or the
+  // browser's own UI instead of clicking again.
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(document.fullscreenElement === previewRef.current)
+    document.addEventListener('fullscreenchange', handleChange)
+    return () => document.removeEventListener('fullscreenchange', handleChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      previewRef.current?.requestFullscreen()
+    }
+  }
 
   const handleDownload = async () => {
     if (!result) return
@@ -43,24 +62,55 @@ export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {
             </>
           ) : null}
         </div>
-        <button
-          type="button"
-          disabled={!result || busy}
-          onClick={handleDownload}
-          className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? 'Exporting…' : 'Download PPTX'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!result}
+            onClick={toggleFullscreen}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Full screen
+          </button>
+          <button
+            type="button"
+            disabled={!result || busy}
+            onClick={handleDownload}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'Exporting…' : 'Download PPTX'}
+          </button>
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center bg-neutral-50 p-8">
         {result ? (
-          <div className="aspect-video w-full max-w-4xl overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+          <div
+            ref={previewRef}
+            className={
+              isFullscreen
+                ? 'relative flex h-full w-full items-center justify-center bg-black'
+                : 'aspect-video w-full max-w-4xl overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm'
+            }
+          >
             <iframe
               title="Diagram preview"
               srcDoc={result.html}
               sandbox=""
-              className="h-full w-full border-0"
+              className={isFullscreen ? 'aspect-video max-h-full max-w-full border-0' : 'h-full w-full border-0'}
             />
+            {/* The browser puts a fullscreened element in the page's "top
+                layer", above everything else in the document -- including
+                the header button that triggered fullscreen in the first
+                place. Escape still exits, but a visible, clickable way out
+                has to live inside this element, not the header. */}
+            {isFullscreen ? (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="absolute right-4 top-4 rounded-md border border-white/20 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:border-white/40"
+              >
+                Exit full screen
+              </button>
+            ) : null}
           </div>
         ) : (
           <EmptyCanvasState
