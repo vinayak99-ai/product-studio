@@ -187,6 +187,48 @@ export async function exportDiagramSlidePptx(result: DiagramSlideResult): Promis
   URL.revokeObjectURL(url)
 }
 
+// Same server-side Playwright render as the PPTX export, returned as a
+// standalone image instead of embedded in a slide -- for dropping into
+// PowerPoint (or anywhere else) by hand.
+export async function exportDiagramSlidePng(result: DiagramSlideResult): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/diagram-slide/export-png`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result),
+  })
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'diagram-slide.png'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// Unlike PNG/PPTX, this needs no round trip -- `result.html` already
+// contains the inline <svg>, so this pulls it out client-side (via
+// DOMParser on the HTML string itself, not the sandboxed preview iframe --
+// sandbox="" gives that iframe an opaque origin the parent can't reach into)
+// and serializes just that node back out as a standalone .svg file.
+export function exportDiagramSlideSvg(result: DiagramSlideResult): void {
+  const doc = new DOMParser().parseFromString(result.html, 'text/html')
+  const svg = doc.querySelector('svg')
+  if (!svg) {
+    throw new Error('No <svg> found in the generated diagram.')
+  }
+  const svgText = new XMLSerializer().serializeToString(svg)
+  const blob = new Blob([svgText], { type: 'image/svg+xml' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'diagram-slide.svg'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const INFOGRAPHIC_FILENAMES: Record<InfographicDiagram['template'], string> = {
   radial_wheel: 'infographic-wheel.pptx',
   comparison_columns: 'infographic-comparison.pptx',

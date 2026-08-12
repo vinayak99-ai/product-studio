@@ -25,6 +25,19 @@ async def export_diagram_slide_pptx(data: DiagramSlideResult) -> Response:
     )
 
 
+@router.post("/diagram-slide/export-png")
+async def export_diagram_slide_png(data: DiagramSlideResult) -> Response:
+    # Same render used inside the PPTX export -- returned as a standalone
+    # file so it can be dropped into PowerPoint (or anywhere else) by hand,
+    # e.g. to try PowerPoint's own picture-editing tools directly.
+    png_bytes = await render_html_to_png(data.html)
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Content-Disposition": 'attachment; filename="diagram-slide.png"'},
+    )
+
+
 @router.websocket("/ws/generate-diagram-slide")
 async def generate_diagram_slide_ws(websocket: WebSocket) -> None:
     await websocket.accept()
