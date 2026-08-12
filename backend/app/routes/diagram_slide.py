@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Response, WebSocket, WebSocketDisconnect
 from openai import OpenAIError
 from pydantic import ValidationError
@@ -14,6 +16,19 @@ from app.diagram_slide_template import build_diagram_slide_pptx
 router = APIRouter(prefix="/api")
 
 
+def _slug(title: str) -> str:
+    """Same regex-based slugify as routes/deep_analysis.py's _slug -- kept
+    as an independent copy rather than a shared import, matching how that
+    file's frontend/backend counterparts are also deliberately kept in
+    sync rather than shared. The browser download flow in lib/api.ts
+    already names the file client-side via the anchor's `download`
+    attribute, which wins over this header in every browser -- this only
+    matters to a direct API caller (curl, Postman) that respects
+    Content-Disposition."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.strip().lower()).strip("-")[:60].rstrip("-")
+    return slug or "diagram-slide"
+
+
 @router.post("/diagram-slide/export")
 async def export_diagram_slide_pptx(data: DiagramSlideResult) -> Response:
     png_bytes = await render_html_to_png(data.html)
@@ -21,7 +36,7 @@ async def export_diagram_slide_pptx(data: DiagramSlideResult) -> Response:
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": 'attachment; filename="diagram-slide.pptx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_slug(data.title)}.pptx"'},
     )
 
 
@@ -34,7 +49,7 @@ async def export_diagram_slide_png(data: DiagramSlideResult) -> Response:
     return Response(
         content=png_bytes,
         media_type="image/png",
-        headers={"Content-Disposition": 'attachment; filename="diagram-slide.png"'},
+        headers={"Content-Disposition": f'attachment; filename="{_slug(data.title)}.png"'},
     )
 
 

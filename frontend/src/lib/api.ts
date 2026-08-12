@@ -100,6 +100,22 @@ export function openDiagramSlideGenerateSocket(
   return () => socket.close()
 }
 
+// The browser's anchor `download` attribute wins over whatever filename the
+// Content-Disposition header carried (a blob: URL download doesn't consult
+// it), so this is the filename that actually shows up for the user -- same
+// independent-copy slugify as deep_analysis's/design_thinking's frontend
+// and backend pairs, kept in sync by convention rather than a shared import.
+function slugify(title: string): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '')
+  return slug || 'diagram-slide'
+}
+
 // Like exportInfographicPptx: the deliverable is a real .pptx built server-side
 // (here by rendering `html` with Playwright and embedding the screenshot
 // full-bleed), so this fetches the binary and triggers a download rather than
@@ -117,7 +133,7 @@ export async function exportDiagramSlidePptx(result: DiagramSlideResult): Promis
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'diagram-slide.pptx'
+  link.download = `${slugify(result.title)}.pptx`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -138,7 +154,7 @@ export async function exportDiagramSlidePng(result: DiagramSlideResult): Promise
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'diagram-slide.png'
+  link.download = `${slugify(result.title)}.png`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -159,7 +175,7 @@ export function exportDiagramSlideSvg(result: DiagramSlideResult): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'diagram-slide.svg'
+  link.download = `${slugify(result.title)}.svg`
   link.click()
   URL.revokeObjectURL(url)
 }
