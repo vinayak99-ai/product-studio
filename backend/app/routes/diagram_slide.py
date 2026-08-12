@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Response, WebSocket, WebSocketDisconnect
 from openai import OpenAIError
 from pydantic import ValidationError
@@ -18,7 +16,7 @@ router = APIRouter(prefix="/api")
 
 @router.post("/diagram-slide/export")
 async def export_diagram_slide_pptx(data: DiagramSlideResult) -> Response:
-    png_bytes = await asyncio.to_thread(render_html_to_png, data.html)
+    png_bytes = await render_html_to_png(data.html)
     pptx_bytes = build_diagram_slide_pptx(png_bytes)
     return Response(
         content=pptx_bytes,
