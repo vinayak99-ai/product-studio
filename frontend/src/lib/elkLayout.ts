@@ -3,6 +3,7 @@ import type { Edge, Node } from '@xyflow/react'
 import type { DiagramCategory, DiagramEdge, DiagramNode, FlowchartDiagram } from '../types'
 import { routeEdgesOnGrid } from './gridRouter'
 import { measureNodeSize, BASE_HEIGHT } from './nodeSizing'
+import { countEdgeCrossings, countTotalBends } from './layoutQuality'
 
 const elk = new ELK()
 
@@ -348,4 +349,62 @@ export async function layoutDiagram(
   }))
 
   return { nodes, edges, groupBoxes }
+}
+
+// Candidates raced by layoutDiagramAuto -- deliberately just the two
+// orientations of 'layered', not every algorithm in Settings:
+// - mrtree is a tree layout, not a general graph layout, so it doesn't
+//   belong in a "which general-purpose layout is cleanest" comparison.
+// - rectpacking (Compact) was tried and measured out, not assumed out:
+//   its whole point is fitting a 16:9 shape, which is a genuinely
+//   different goal from "fewest crossings and bends" and loses to it far
+//   more often than expected -- confirmed directly against a trivial
+//   2-node/1-edge diagram, where Compact still produced a 4-bend winding
+//   route between two nodes a straight line would connect just fine,
+//   because row-wrapping to hit the target aspect ratio kicks in almost
+//   regardless of diagram size. So it isn't a fair "which looks best"
+//   contender; it stays available as an explicit manual choice for when
+//   the slide-shaped export layout is specifically what's wanted.
+// DOWN listed first so it wins ties -- the more conventional top-down
+// reading order when both orientations are otherwise equally clean.
+const AUTO_LAYOUT_CANDIDATES: { algorithm: LayoutAlgorithm; direction: LayoutDirection }[] = [
+  { algorithm: 'layered', direction: 'DOWN' },
+  { algorithm: 'layered', direction: 'RIGHT' },
+]
+
+// Runs a small candidate set in parallel and picks whichever actually
+// produces the cleanest routing (see lib/layoutQuality.ts), instead of a
+// single fixed default or a hand-coded "has this diagram got a branch"
+// heuristic. Crossings dominate the score -- an actual line-on-line
+// crossing is unambiguously worse -- but crossings alone miss a real bad
+// case: two edges can run parallel and close together for a long stretch
+// without ever literally crossing, so bend count breaks ties within
+// similar crossing counts. Final ties favor the earlier candidate in
+// AUTO_LAYOUT_CANDIDATES.
+export async function layoutDiagramAuto(diagram: FlowchartDiagram): Promise<{
+  nodes: Node<DiagramNodeData, 'diagramNode'>[]
+  edges: Edge<DiagramEdgeData, 'diagramEdge'>[]
+  groupBoxes: GroupBox[]
+  algorithm: LayoutAlgorithm
+  direction: LayoutDirection
+  crossings: number
+}> {
+  const results = await Promise.all(
+    AUTO_LAYOUT_CANDIDATES.map((candidate) => layoutDiagram(diagram, candidate.algorithm, candidate.direction)),
+  )
+  const crossingCounts = results.map((result) => countEdgeCrossings(result.edges))
+  const bendCounts = results.map((result) => countTotalBends(result.edges))
+  const scores = results.map((_, i) => crossingCounts[i] * 1000 + bendCounts[i] * 10 + i)
+
+  let bestIndex = 0
+  for (let i = 1; i < scores.length; i++) {
+    if (scores[i] < scores[bestIndex]) bestIndex = i
+  }
+
+  return {
+    ...results[bestIndex],
+    algorithm: AUTO_LAYOUT_CANDIDATES[bestIndex].algorithm,
+    direction: AUTO_LAYOUT_CANDIDATES[bestIndex].direction,
+    crossings: crossingCounts[bestIndex],
+  }
 }

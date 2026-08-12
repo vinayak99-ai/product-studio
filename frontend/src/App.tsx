@@ -38,13 +38,20 @@ function App() {
   const [infographicResult, setInfographicResult] = useState<GenerateInfographicResponse | null>(null)
   const [deckResult, setDeckResult] = useState<GenerateDeckResponse | null>(null)
   const [storyResult, setStoryResult] = useState<StoryScript | null>(null)
-  // Compact + right-angle edges as the default look: shorter, orthogonally
-  // routed edges (ELK already computes obstacle-avoiding ORTHOGONAL routing
-  // regardless of algorithm -- 'step' just renders those waypoints as sharp
-  // corners instead of a curve fitted through them) on the denser,
-  // slide-shaped layout, rather than the more spread-out layered default.
-  const [layoutAlgorithm, setLayoutAlgorithm] = useState<LayoutAlgorithm>('rectpacking')
+  // Right-angle edges as the default look (ELK already computes obstacle-
+  // avoiding ORTHOGONAL routing regardless of algorithm -- 'step' just
+  // renders those waypoints as sharp corners instead of a curve fitted
+  // through them). The layout algorithm/direction values here only matter
+  // before the first diagram exists -- FlowchartCanvas's auto-select race
+  // (see elkLayout.ts's layoutDiagramAuto) picks the actually-cleanest
+  // layout for every fresh generation from here on, overriding these.
+  const [layoutAlgorithm, setLayoutAlgorithm] = useState<LayoutAlgorithm>('layered')
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('DOWN')
+  // Once you pick a layout yourself in Settings, that choice sticks for the
+  // rest of the session and FlowchartCanvas stops racing layout candidates
+  // on new diagrams -- see FlowchartCanvas's autoSelectLayout prop.
+  const [layoutManuallySet, setLayoutManuallySet] = useState(false)
+  const [layoutCrossingCount, setLayoutCrossingCount] = useState(0)
   const [edgeShape, setEdgeShape] = useState<EdgeShape>('step')
   const [themeName, setThemeName] = useState<ThemeName>('fidelity-green')
   const [snapToGrid, setSnapToGrid] = useState(false)
@@ -77,6 +84,23 @@ function App() {
   // state instead (see reconcileDiagram.ts).
   const handleEditResult = (diagram: FlowchartDiagram) => {
     canvasRef.current?.applyEdit(diagram)
+  }
+
+  // Settings-facing setters -- distinct from handleAutoLayoutPicked below,
+  // which writes the same layoutAlgorithm/layoutDirection state but must
+  // NOT flip layoutManuallySet, or every auto-picked layout would disable
+  // auto-selection for every diagram after the first.
+  const handleLayoutAlgorithmChange = (value: LayoutAlgorithm) => {
+    setLayoutAlgorithm(value)
+    setLayoutManuallySet(true)
+  }
+  const handleLayoutDirectionChange = (value: LayoutDirection) => {
+    setLayoutDirection(value)
+    setLayoutManuallySet(true)
+  }
+  const handleAutoLayoutPicked = (algorithm: LayoutAlgorithm, direction: LayoutDirection) => {
+    setLayoutAlgorithm(algorithm)
+    setLayoutDirection(direction)
   }
 
   const comingSoonTool = TOOLS.find((tool) => tool.id === activeTool && tool.status === 'soon')
@@ -112,9 +136,9 @@ function App() {
                 />
                 <SettingsPanel
                   layoutAlgorithm={layoutAlgorithm}
-                  onLayoutAlgorithmChange={setLayoutAlgorithm}
+                  onLayoutAlgorithmChange={handleLayoutAlgorithmChange}
                   layoutDirection={layoutDirection}
-                  onLayoutDirectionChange={setLayoutDirection}
+                  onLayoutDirectionChange={handleLayoutDirectionChange}
                   edgeShape={edgeShape}
                   onEdgeShapeChange={setEdgeShape}
                   themeName={themeName}
@@ -124,6 +148,12 @@ function App() {
                 />
               </div>
             </div>
+            {layoutCrossingCount > 0 ? (
+              <p className="border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-xs text-amber-800">
+                {layoutCrossingCount} edge crossing{layoutCrossingCount === 1 ? '' : 's'} in this layout -- try Tree
+                layout or repositioning nodes manually.
+              </p>
+            ) : null}
             <div className="min-h-0 flex-1">
               <FlowchartCanvas
                 ref={canvasRef}
@@ -133,6 +163,9 @@ function App() {
                 edgeShape={edgeShape}
                 themeName={themeName}
                 snapToGrid={snapToGrid}
+                autoSelectLayout={!layoutManuallySet}
+                onAutoLayoutPicked={handleAutoLayoutPicked}
+                onLayoutQuality={setLayoutCrossingCount}
               />
             </div>
             {result ? <DiagramLegend diagram={result.diagram} /> : null}

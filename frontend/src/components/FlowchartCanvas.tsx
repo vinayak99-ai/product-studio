@@ -13,7 +13,8 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { layoutDiagram, type GroupBox, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
+import { layoutDiagram, layoutDiagramAuto, type GroupBox, type LayoutAlgorithm, type LayoutDirection } from '../lib/elkLayout'
+import { countEdgeCrossings } from '../lib/layoutQuality'
 import { measureNodeSize } from '../lib/nodeSizing'
 import { nextFreePosition, type CanvasFlowNode } from '../lib/canvasFlow'
 import { reconcileDiagram } from '../lib/reconcileDiagram'
@@ -34,6 +35,19 @@ interface FlowchartCanvasProps {
   edgeShape: EdgeShape
   themeName: ThemeName
   snapToGrid: boolean
+  // When true (the "algorithm/direction haven't been manually touched yet"
+  // state, tracked in App.tsx), a freshly generated diagram races a small
+  // set of layout candidates and picks whichever measures the fewest edge
+  // crossings, instead of always using layoutAlgorithm/layoutDirection as
+  // given. onAutoLayoutPicked reports the winner back up so Settings stays
+  // honest about what's actually on screen -- kept separate from the
+  // Settings-facing algorithm/direction callbacks so this sync-back never
+  // itself counts as a manual touch. onLayoutQuality reports the crossing
+  // count of whatever layout actually rendered (auto-picked or not), so a
+  // still-imperfect manual choice can be flagged too.
+  autoSelectLayout: boolean
+  onAutoLayoutPicked: (algorithm: LayoutAlgorithm, direction: LayoutDirection) => void
+  onLayoutQuality: (crossings: number) => void
 }
 
 // CanvasFlowNode/isDiagramNode/nextFreePosition live in lib/canvasFlow.ts,
@@ -82,10 +96,19 @@ function buildGroupBoxNodes(groupBoxes: GroupBox[]): GroupBoxFlowNode[] {
 }
 
 export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvasProps>(
-  ({ diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid }, ref) => {
+  (
+    { diagram, layoutAlgorithm, layoutDirection, edgeShape, themeName, snapToGrid, autoSelectLayout, onAutoLayoutPicked, onLayoutQuality },
+    ref,
+  ) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const flowInstanceRef = useRef<ReactFlowInstance<CanvasFlowNode, DiagramFlowEdge> | null>(null)
     const addNodeButtonRef = useRef<HTMLButtonElement>(null)
+    // Tracks the previous `diagram` prop reference so the layout effect can
+    // tell "a genuinely new diagram just arrived" (races layout candidates)
+    // apart from "layoutAlgorithm/layoutDirection changed by hand" (respects
+    // exactly what was picked) -- both fire the same effect, since both are
+    // in its dependency array.
+    const prevDiagramRef = useRef<FlowchartDiagram | null>(null)
     // Monotonic, not a boolean -- lets a node's edit-mode effect re-fire on
     // a second Enter press even though "please edit" was already requested
     // once before (see DiagramNodeComponent's editRequestId effect).
@@ -441,15 +464,37 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
     // Recomputes positions — only needed when the diagram or layout geometry changes.
     useEffect(() => {
       if (!diagram || diagram.nodes.length === 0) {
+        prevDiagramRef.current = diagram
         setNodes([])
         setEdges([])
         setGroupBoxes([])
         return
       }
 
+      // A genuinely new diagram (not just a Settings tweak) gets to race
+      // layout candidates -- see layoutDiagramAuto's own reasoning. Read
+      // before the async work starts so a rapid re-fire can't misread it.
+      const isFreshDiagram = diagram !== prevDiagramRef.current
+      prevDiagramRef.current = diagram
+      const shouldAutoSelect = isFreshDiagram && autoSelectLayout
+
       let cancelled = false
-      layoutDiagram(diagram, layoutAlgorithm, layoutDirection).then(({ nodes: laidOutNodes, edges: laidOutEdges, groupBoxes: laidOutGroupBoxes }) => {
+      // Normalizes both paths to the same shape (crossings always computed,
+      // algorithm/direction only meaningful when auto-selection actually ran)
+      // instead of relying on structural narrowing between layoutDiagram's
+      // and layoutDiagramAuto's return types.
+      const runLayout = async () => {
+        if (shouldAutoSelect) {
+          const auto = await layoutDiagramAuto(diagram)
+          return { ...auto, algorithm: auto.algorithm as LayoutAlgorithm | undefined, direction: auto.direction as LayoutDirection | undefined }
+        }
+        const manual = await layoutDiagram(diagram, layoutAlgorithm, layoutDirection)
+        return { ...manual, crossings: countEdgeCrossings(manual.edges), algorithm: undefined, direction: undefined }
+      }
+
+      runLayout().then((result) => {
         if (cancelled) return
+        const { nodes: laidOutNodes, edges: laidOutEdges, groupBoxes: laidOutGroupBoxes } = result
         const withCallbacks: DiagramFlowNode[] = laidOutNodes.map((node) => ({
           ...node,
           data: {
@@ -482,13 +527,24 @@ export const FlowchartCanvas = forwardRef<FlowchartCanvasHandle, FlowchartCanvas
             },
           })) as DiagramFlowEdge[],
         )
+
+        // Reports the crossing count of whatever actually rendered -- auto-
+        // picked or a manual choice alike -- so a still-imperfect layout can
+        // be flagged regardless of how it was chosen; syncs the winning
+        // algorithm/direction back to Settings only on the auto path, via a
+        // callback separate from the Settings-facing ones so this doesn't
+        // itself count as a manual touch.
+        onLayoutQuality(result.crossings)
+        if (result.algorithm && result.direction) {
+          onAutoLayoutPicked(result.algorithm, result.direction)
+        }
       })
 
       return () => {
         cancelled = true
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [diagram, layoutAlgorithm, layoutDirection])
+    }, [diagram, layoutAlgorithm, layoutDirection, autoSelectLayout])
 
     // Restyle pass — edge shape/theme are just rendering choices, no need to re-run elk.
     // Keeps the routed waypoints and node boxes from the layout pass so
