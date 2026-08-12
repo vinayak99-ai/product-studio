@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,
+  EdgeToolbar,
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
@@ -13,6 +15,11 @@ import type { EdgeType } from '../../types'
 import type { Box, Waypoint } from '../../lib/elkLayout'
 import { buildRoutedPath, clampLabelToBoxes } from '../../lib/edgeRouting'
 
+const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
+  default: 'Default',
+  conditional: 'Conditional',
+}
+
 export type DiagramFlowEdge = Edge<
   {
     type: EdgeType
@@ -20,11 +27,15 @@ export type DiagramFlowEdge = Edge<
     themeName?: ThemeName
     waypoints?: Waypoint[]
     nodeBoxes?: Box[]
+    onTypeChange?: (id: string, type: EdgeType) => void
+    onLabelChange?: (id: string, label: string) => void
+    onDelete?: (id: string) => void
   },
   'diagramEdge'
 >
 
 export function DiagramEdgeComponent({
+  id,
   sourceX,
   sourceY,
   targetX,
@@ -34,7 +45,9 @@ export function DiagramEdgeComponent({
   data,
   label,
   markerEnd,
+  selected,
 }: EdgeProps<DiagramFlowEdge>) {
+  const [labelDraft, setLabelDraft] = useState(typeof label === 'string' ? label : '')
   const pathParams = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
   const shape = data?.edgeShape ?? 'bezier'
 
@@ -106,6 +119,46 @@ export function DiagramEdgeComponent({
           </div>
         </EdgeLabelRenderer>
       ) : null}
+
+      {/* Manual editing on top of whatever the LLM generated or a
+          hand-drawn connection started as -- retype, relabel, or delete,
+          same toolbar-on-selection pattern as DiagramNodeComponent. */}
+      <EdgeToolbar edgeId={id} x={labelX} y={labelY} isVisible={!!selected}>
+        <div
+          className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1 shadow-md"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <select
+            value={data?.type ?? 'default'}
+            onChange={(event) => data?.onTypeChange?.(id, event.target.value as EdgeType)}
+            className="rounded border border-neutral-200 bg-white px-1.5 py-1 text-[11px] text-neutral-700 outline-none"
+          >
+            {(Object.keys(EDGE_TYPE_LABELS) as EdgeType[]).map((type) => (
+              <option key={type} value={type}>
+                {EDGE_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+          <input
+            value={labelDraft}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onBlur={() => data?.onLabelChange?.(id, labelDraft.trim())}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+            }}
+            placeholder="Label"
+            className="w-24 rounded border border-neutral-200 bg-white px-1.5 py-1 text-[11px] text-neutral-700 outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => data?.onDelete?.(id)}
+            title="Delete edge"
+            className="rounded border border-red-200 px-1.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+          >
+            Delete
+          </button>
+        </div>
+      </EdgeToolbar>
     </>
   )
 }

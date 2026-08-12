@@ -1,5 +1,6 @@
 import { useState, type RefObject } from 'react'
-import { exportPdf, exportPng } from '../lib/export'
+import { exportPng } from '../lib/export'
+import { exportPdfVector } from '../lib/exportPdfVector'
 import { exportPptx } from '../lib/exportPptx'
 import type { LayoutAlgorithm } from '../lib/elkLayout'
 import { themePalettes, type ThemeName } from '../lib/themes'
@@ -28,18 +29,21 @@ export function ExportControls({ targetRef, disabled, layoutAlgorithm, themeName
     try {
       if (kind === 'png' && handle.domNode) {
         await exportPng(handle.domNode)
-      } else if (kind === 'pdf' && handle.domNode) {
-        await exportPdf(handle.domNode)
-      } else if (kind === 'pptx') {
+      } else if (kind === 'pdf' || kind === 'pptx') {
         const { nodes, edges, groupBoxes, categories } = handle.getFlow()
         // Group-container boxes ride as their own pseudo-node kind in the
-        // canvas's node array (a real DOM element, so PNG/PDF -- which just
-        // screenshot handle.domNode -- already show them for free); filter
-        // them out here since exportPptx draws real group rectangles from
-        // the separate `groupBoxes` array instead, and its NodeType-keyed
-        // shape/color lookups only cover real diagram node types.
+        // canvas's node array (a real DOM element, so PNG -- which just
+        // screenshots handle.domNode -- already shows them for free);
+        // filter them out here since both vector exporters draw real group
+        // rectangles from the separate `groupBoxes` array instead, and
+        // their NodeType-keyed shape/color lookups only cover real diagram
+        // node types.
         const diagramNodes = nodes.filter(isDiagramNode)
-        await exportPptx(diagramNodes, edges, groupBoxes, categories, themePalettes[themeName])
+        if (kind === 'pdf') {
+          await exportPdfVector(diagramNodes, edges, groupBoxes, categories, themePalettes[themeName])
+        } else {
+          await exportPptx(diagramNodes, edges, groupBoxes, categories, themePalettes[themeName])
+        }
       }
     } finally {
       setBusy(null)

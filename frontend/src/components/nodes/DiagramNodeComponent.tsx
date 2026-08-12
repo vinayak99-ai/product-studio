@@ -10,6 +10,7 @@ export type DiagramNodeCallbacks = {
   onCategoryChange?: (id: string, categoryId: string | null) => void
   onExternalToggle?: (id: string, isExternal: boolean) => void
   onDelete?: (id: string) => void
+  onDuplicate?: (id: string) => void
 }
 
 export type DiagramFlowNode = Node<DiagramNodeData & DiagramNodeCallbacks, 'diagramNode'>
@@ -138,6 +139,14 @@ export function DiagramNodeComponent({ id, data, selected }: NodeProps<DiagramFl
           }`}
         >
           Ext
+        </button>
+        <button
+          type="button"
+          onClick={() => data.onDuplicate?.(id)}
+          title="Duplicate node"
+          className="rounded border border-neutral-200 px-1.5 py-1 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50"
+        >
+          Duplicate
         </button>
         <button
           type="button"
