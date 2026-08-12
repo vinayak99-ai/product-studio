@@ -51,6 +51,7 @@ class KbCollectionMeta(BaseModel):
     created_at: str
     updated_at: str
     document_count: int = 0
+    is_default_included: bool = False  # pre-checked in the multi-collection search picker
 
 class KbDocumentMeta(BaseModel):
     id: str
@@ -102,24 +103,34 @@ in sync on ingest/delete for cheap UI display, not queried from Chroma live.
 
 ### File types
 
-Reuses the existing `extraction.py` (already used by Story Builder, Deep
-Analysis, Design Thinking, Document Q&A) as the starting point, plus new
-work identified during design:
+**v1 scope: `.md` only.** Deliberately narrow — no `.txt`, `.pdf`, `.docx`,
+`.xlsx`, `.csv`, or `.pptx` in the initial ingestion pipeline, even though
+`.txt`/`.pdf`/`.docx` are already handled by this backend's shared
+`extraction.py` for other tools. Knowledge Base does not call into that
+module at all for v1; it reads uploaded files as raw markdown text
+directly. This includes the catalog file — for v1 it must be a markdown
+table in a `.md` file, not an actual `.xlsx` upload (the "Excel table
+format" catalog case from earlier design becomes a markdown table that
+happens to describe files the way a spreadsheet would, not a real `.xlsx`
+file). The bugs found in `.docx`/`.pdf` table extraction (silently dropped
+tables, mangled table structure) and the missing `.xlsx`/`.csv`/`.pptx`
+support are still worth fixing eventually, but are entirely out of scope
+until markdown-only ingestion is built, tested, and proven. See "Deferred
+file type work" below.
 
-| Type | Status | Action needed |
+### Deferred file type work (not v1)
+
+Kept here so the earlier analysis isn't lost, revisit once markdown-only
+ingestion is working:
+
+| Type | Status today | Action needed, when this is picked back up |
 |---|---|---|
-| `.txt`, `.md` | Already supported | None |
-| `.pdf` | Already supported | Current extraction is plain-text-pull (`pypdf`), which mangles table structure. Needs a table-aware extractor before this tool trusts PDFs with tables. |
-| `.docx` | Already supported | Current extraction only reads `document.paragraphs` — **silently drops every table in the file**. Needs `document.tables` added before this tool trusts docx files with tables. |
-| `.xlsx` | **Not supported** | New — needed for the Excel-format catalog file. Add via `openpyxl`. |
-| `.csv` | **Not supported** | New — same rationale as xlsx, simpler to add (stdlib `csv`). |
-| `.pptx` | **Not supported** | New, lower priority. `python-pptx` is already a dependency (used for deck export elsewhere in this backend) — just needs a read path added. Extract slide text + speaker notes per slide. |
-| `.yaml` / `.json` | Not supported, not planned yet | Only add if a team actually hands over an OpenAPI spec or similar — needs structured/key-aware chunking, a different code path from prose chunking. Don't build speculatively. |
-
-**Recommended build order**: fix the docx/pdf table-blindness first (it's a
-silent correctness bug relative to the "don't lose information" goal, not
-just a missing feature), then add xlsx/csv (directly needed for the catalog
-use case), then pptx if it turns out to matter in practice.
+| `.pdf` | Supported elsewhere in this backend | Current extraction is plain-text-pull (`pypdf`), which mangles table structure. Needs a table-aware extractor before this tool trusts PDFs with tables. |
+| `.docx` | Supported elsewhere in this backend | Current extraction only reads `document.paragraphs` — **silently drops every table in the file**. Needs `document.tables` added before this tool trusts docx files with tables. |
+| `.xlsx` | Not supported anywhere | Add via `openpyxl`, if a real `.xlsx` catalog upload (rather than a markdown table) turns out to be needed. |
+| `.csv` | Not supported anywhere | Same rationale as xlsx, simpler to add (stdlib `csv`). |
+| `.pptx` | Not supported for ingestion (only export) | `python-pptx` is already a dependency — just needs a read path added. Extract slide text + speaker notes per slide. |
+| `.yaml` / `.json` | Not supported, not planned | Only add if a team actually hands over an OpenAPI spec or similar — needs structured/key-aware chunking, a different code path from prose chunking. |
 
 ### Chunking
 
@@ -186,6 +197,28 @@ way.
   drop every chunk for a document in one call, then re-chunk + re-embed on
   re-upload. Full replace, not an incremental diff — avoids any risk of
   stale chunks from an old version lingering alongside a new one.
+- **Collection naming**: the Chroma-side collection is identified by a
+  generated ID (`KbCollectionMeta.id`), not the human-facing name directly
+  — decouples the display name from the Chroma identifier, so a rename
+  never risks a collision or an invalid-character issue on the Chroma side.
+  The human-facing `name` lives only in the JSON metadata.
+
+### Initial collections
+
+Three collections to create once collection CRUD exists:
+
+- **Generic Context** — the always-on, cross-project reference collection
+  (the "global" collection from the cross-collection search design; default
+  included alongside whichever project collection is active).
+- **ITAC** — project-specific collection.
+- **Digital DA Work** — project-specific collection.
+
+No special-casing needed in code for any of these three — they're created
+through the same collection-creation flow as any future collection. The
+only behavior that treats "Generic Context" differently is the UI default
+described under Cross-collection search below (pre-checked, not hardcoded
+by name — a `is_default_included` flag on the collection, settable by the
+user on any collection, happens to be turned on for this one at creation).
 
 ## Retrieval + generation flow
 
@@ -245,14 +278,14 @@ loop is proven out, not a day-one requirement.
 
 ## New dependencies
 
-- `chromadb` — the vector store itself.
-- `openpyxl` — `.xlsx` extraction.
-- A table-aware PDF extractor (e.g. `pdfplumber`) if PDF table support is
-  prioritized in the first phase — otherwise deferred alongside the pptx
-  work.
-- `python-docx`'s existing table API (`document.tables`) needs no new
-  dependency, just a code change in `extraction.py`.
-- `python-pptx` — already present, no install needed, only a new read path.
+- `chromadb` — the vector store itself. The only new dependency v1
+  actually needs — markdown-only ingestion requires no new file-parsing
+  library.
+- Deferred, only needed once the file-type work above is picked back up:
+  `openpyxl` (`.xlsx`), a table-aware PDF extractor such as `pdfplumber`,
+  `python-docx`'s existing table API (`document.tables` — no new
+  dependency, just a code change), `python-pptx` (already present, no
+  install needed, only a new read path).
 
 ## Backend module plan
 
@@ -270,9 +303,12 @@ persistence / llm / vector-store / routes):
   + merge/re-rank.
 - `app/kb_llm.py` — the retrieval-augmented `generate_structured()` call,
   system prompt for markdown-formatted, citation-carrying answers.
-- `app/extraction.py` — extended in place for xlsx/csv/table-aware
-  docx/pdf, rather than duplicated — every existing tool that uploads
-  documents benefits from the same fixes.
+- `app/extraction.py` — **not touched for v1.** Knowledge Base reads
+  uploaded `.md` files directly rather than calling into this module. The
+  xlsx/csv/table-aware docx/pdf work, when picked back up, extends this
+  module in place rather than duplicating it, so every existing tool that
+  uploads documents benefits from the same fixes — but that's deferred
+  work, not part of building Knowledge Base itself.
 - `app/routes/knowledge_base.py` — collection CRUD, document
   upload/replace/delete, search endpoint (WebSocket, matching this
   backend's existing progress-streaming pattern for LLM calls).
@@ -299,35 +335,32 @@ multi-document collections and multi-collection search:
 
 ## Open decisions before implementation starts
 
-1. **Docx/pdf table fix now or later?** It's a real correctness gap, but
-   scoping it into phase 1 makes the first ship bigger. Recommend fixing
-   docx (cheap, no new dependency) in phase 1, deferring pdf table support
-   (needs a new dependency + more testing) to a later phase unless PDFs with
-   tables are an immediate, real input.
-2. **Chunk size targets** — not yet pinned to an exact token/char count.
+Resolved since the first draft of this plan: file-type scope (markdown
+only for v1, see above) and Chroma collection naming (generated ID,
+decoupled from the display name — see "Initial collections" above). What's
+still open:
+
+1. **Chunk size targets** — not yet pinned to an exact token/char count.
    Needs a concrete default (e.g. ~800 tokens per chunk, ~150 token overlap)
    validated against a few real documents once building starts.
-3. **Generated-document re-ingestion** — standalone export only for v1, per
+2. **Generated-document re-ingestion** — standalone export only for v1, per
    the recommendation above; revisit once the core loop is used in practice.
-4. **Chroma collection naming** — whether the Chroma-side collection name is
-   the same as the Knowledge Base collection's human-chosen name, or a
-   generated ID with the human name only in the JSON metadata (safer against
-   rename collisions / special characters). Recommend the latter — decouple
-   the user-facing name from the Chroma identifier entirely.
 
 ## Suggested phased build order
 
 1. **Foundation**: `kb_models.py`, `kb_persistence.py`, `kb_vector_store.py`
    wired to a real Chroma instance, collection CRUD routes + UI (create/
-   list/rename/delete collections, no documents yet).
-2. **Ingestion, single collection**: document upload (txt/md/pdf/docx only,
-   reusing existing extraction as-is), structure-aware chunking, single-
-   collection search + citations, markdown-rendered answers.
+   list/rename/delete collections, no documents yet). Create the three
+   initial collections (Generic Context, ITAC, Digital DA Work) once this
+   exists.
+2. **Ingestion, single collection**: markdown-only document upload,
+   structure-aware chunking, single-collection search + citations,
+   markdown-rendered answers.
 3. **Catalog handling**: `is_catalog` flag, structured parse + enrichment,
    drift warnings, replace/delete lifecycle including the catalog's wider
    blast radius.
 4. **Cross-collection search**: multi-select picker, federated query +
-   merge/re-rank, global-collection default-on behavior.
-5. **File type expansion**: xlsx/csv extraction, docx table fix, pptx read
-   path — in that priority order, each addable independently once the core
-   loop from steps 1-4 is proven.
+   merge/re-rank, Generic Context default-included behavior.
+5. **File type expansion (later, not v1)**: xlsx/csv extraction, docx table
+   fix, pptx read path — in that priority order, each addable independently
+   once the markdown-only core loop from steps 1-4 is proven.
