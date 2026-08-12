@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { extractFile } from '../lib/api'
 import { listStoryProjects, openStoryGenerateSocket, type StorySource } from '../lib/storyApi'
-import type { StorySourceProject, StoryScript, StoryWsProgressMessage } from '../storyTypes'
+import { storyFrameworkLabel, type StorySourceProject, type StoryScript, type StoryWsProgressMessage } from '../storyTypes'
 
 type Status = 'loading_projects' | 'idle' | 'planning' | 'generating' | 'done' | 'error'
 type SourceMode = 'project' | 'document'
@@ -29,6 +29,7 @@ export function StorySidebar({ onResult }: StorySidebarProps) {
   const [prompt, setPrompt] = useState('')
   const [status, setStatus] = useState<Status>('loading_projects')
   const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [framework, setFramework] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const closeSocketRef = useRef<(() => void) | null>(null)
 
@@ -90,6 +91,7 @@ export function StorySidebar({ onResult }: StorySidebarProps) {
 
     setErrorMessage(null)
     setProgress(null)
+    setFramework(null)
     setStatus('planning')
     closeSocketRef.current?.()
 
@@ -99,6 +101,7 @@ export function StorySidebar({ onResult }: StorySidebarProps) {
       } else if (message.stage === 'plan_ready') {
         setStatus('generating')
         setProgress({ completed: 0, total: message.plan.beats.length })
+        setFramework(message.plan.framework)
       } else if (message.stage === 'generating') {
         setStatus('generating')
         setProgress({ completed: message.completed, total: message.total })
@@ -126,13 +129,14 @@ export function StorySidebar({ onResult }: StorySidebarProps) {
   const canGenerate =
     !isGenerating && (sourceMode === 'project' ? !!projectId : material.trim().length > 0)
 
+  const frameworkNote = framework ? ` (${storyFrameworkLabel(framework)})` : ''
   const statusText =
     status === 'generating' && progress
-      ? `Writing beat ${progress.completed} of ${progress.total}…`
+      ? `Writing beat ${progress.completed} of ${progress.total}${frameworkNote}…`
       : status === 'planning'
         ? 'Planning the story arc…'
         : status === 'done'
-          ? 'Ready.'
+          ? `Ready.${frameworkNote}`
           : status === 'error'
             ? 'Something went wrong.'
             : ''

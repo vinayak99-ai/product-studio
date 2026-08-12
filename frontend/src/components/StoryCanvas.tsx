@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { exportStoryDeck, exportStoryScript } from '../lib/storyApi'
-import type { StoryBeat, StoryScript } from '../storyTypes'
+import { storyFrameworkLabel, type StoryBeat, type StoryScript } from '../storyTypes'
 import { renderInfographicPreview } from './infographic/previewRegistry'
 
 interface StoryCanvasProps {
@@ -55,6 +55,9 @@ export function StoryCanvas({ story, onStoryChange }: StoryCanvasProps) {
             <>
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
                 {story.beats.length} beats · {story.total_minutes} min
+              </span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                {storyFrameworkLabel(story.framework)}
               </span>
               <span className="text-[11px] text-neutral-400">from {story.source_project_name}</span>
             </>

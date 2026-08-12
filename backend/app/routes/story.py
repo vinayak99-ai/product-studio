@@ -81,7 +81,8 @@ def api_export_script(story: StoryScript) -> Response:
         f"# {story.title}",
         "",
         f"**Source:** {story.source_project_name}  ",
-        f"**Total length:** {story.total_minutes} minutes",
+        f"**Total length:** {story.total_minutes} minutes  ",
+        f"**Framework:** {story.framework}",
         "",
     ]
     for beat in story.beats:

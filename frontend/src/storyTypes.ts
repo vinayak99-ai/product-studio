@@ -16,6 +16,7 @@ export interface StoryBeatPlan {
 
 export interface StoryPlan {
   title: string
+  framework: string
   beats: StoryBeatPlan[]
 }
 
@@ -30,9 +31,21 @@ export interface StoryBeat {
 export interface StoryScript {
   title: string
   total_minutes: number
+  framework: string
   source_project_id: string | null
   source_project_name: string
   beats: StoryBeat[]
+}
+
+export const STORY_FRAMEWORK_LABEL: Record<string, string> = {
+  minto_pyramid: 'Minto Pyramid',
+  scqa: 'SCQA',
+  pas: 'Problem–Agitate–Solution',
+  before_after_bridge: 'Before → After → Bridge',
+}
+
+export function storyFrameworkLabel(framework: string): string {
+  return STORY_FRAMEWORK_LABEL[framework] ?? framework
 }
 
 export type StoryWsProgressMessage =

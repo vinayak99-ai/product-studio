@@ -13,9 +13,9 @@ STORY_DEFAULT_MINUTES = 30
 
 class StoryBeatPlan(BaseModel):
     """One beat's shape and time budget, decided before any content is
-    written -- the label is the AI's own choice of narrative framework
-    (Situation/Complication/Resolution, hero's-journey, before/after,
-    whatever fits this product), not a fixed template."""
+    written. The label reflects the chosen framework's own structure (e.g.
+    "Situation", "Complication", "Answer" for scqa; "Recommendation",
+    "Why It Works" for minto_pyramid) -- not a fixed template."""
 
     label: str
     template: InfographicTemplateId
@@ -26,6 +26,10 @@ class StoryBeatPlan(BaseModel):
 
 class StoryPlan(BaseModel):
     title: str
+    # Which named framework from STORY_FRAMEWORK_CATALOG (story_llm.py) the
+    # plan is built on, e.g. "minto_pyramid", "scqa" -- a deliberate, visible
+    # choice rather than an implicit one.
+    framework: str
     beats: list[StoryBeatPlan] = Field(default_factory=list)
 
 
@@ -44,6 +48,7 @@ class StoryBeat(BaseModel):
 class StoryScript(BaseModel):
     title: str
     total_minutes: int
+    framework: str
     # None when the source was an uploaded document rather than an existing
     # Spec Builder project -- source_project_name still holds a human-
     # readable label (the project name, or the document's filename) either way.
