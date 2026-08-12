@@ -9,7 +9,6 @@ config.
 | Tool | Status | What it does |
 |---|---|---|
 | **Sequence Diagram** | Ready | Source material + a prompt → an interactive sequence diagram (participants, sync/return messages), exportable to PNG. |
-| **Diagram Shaper** | Ready | Source material + a prompt → a process/decision/hierarchy/architecture/timeline diagram built from a typed list of shapes and connectors, exported as native, individually editable PowerPoint shapes and text — not a screenshot. |
 | **Infographic Builder** | Ready | Source material + a prompt → a single on-brand infographic slide (14 templates) or a full multi-slide PRD-to-deck PPTX that always opens with a title/cover slide and a paginated agenda. |
 | **Diagram Slides** | Ready | Source material + a prompt → a hand-composed process/decision/hierarchy/architecture/timeline diagram (shape encodes type, one reserved accent, no layout-engine routing), rendered server-side and exported full-bleed into a PPTX slide. |
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
@@ -84,7 +83,7 @@ generate anything.
 
 ### LLM provider
 
-Every LLM call in the backend — Sequence, Diagram Shaper, Diagram Slides, Infographic,
+Every LLM call in the backend — Sequence, Diagram Slides, Infographic,
 Story Builder, and Spec Builder alike — goes through a single switchable provider (`backend/app/llm_client.py`)
 rather than each tool talking to a model API directly. `LLM_PROVIDER=openai` (the default)
 uses `OPENAI_API_KEY`/`OPENAI_MODEL` above. `LLM_PROVIDER=corporate` routes every call to
@@ -101,48 +100,26 @@ with one env var instead of Spec Builder needing its own separate model config.
 ## Project layout
 
 ```
-backend/      One FastAPI process: Sequence/Diagram Shaper/Diagram Slides/Infographic/
+backend/      One FastAPI process: Sequence/Diagram Slides/Infographic/
               Story routes (/api/*) plus Spec Builder's app
               (backend/app/spec_builder/) mounted at /pm/*
 frontend/     One React app: the rail-nav shell, plus each tool's canvas/panels —
               Spec Builder's own pages/components live under
               frontend/src/features/spec-builder/
-docs/         Diagram Shaper's architecture doc, plus Spec Builder's full feature/
-              known-issues/roadmap docs under docs/spec-builder/
+docs/         Spec Builder's full feature/known-issues/roadmap docs under
+              docs/spec-builder/
 ```
 
 ## Navigating Product Studio
 
 The left rail is the only navigation — no separate menus per tool. Each icon is a tool
 from the `TOOLS` registry; a small dot marks the ones still "Soon." The breadcrumb at the
-top ("Product Studio / Diagram Shaper") reflects whichever tool is active.
+top ("Product Studio / Diagram Slides") reflects whichever tool is active.
 
 Switching tools doesn't unmount them — every ready tool stays mounted (just hidden) in
 the background, so an in-progress diagram or an unsaved edit survives clicking to another
 tool and back. This matters most for Spec Builder, which autosaves on a 2-second
 debounce: switching away mid-edit doesn't lose anything.
-
-## Using Diagram Shaper
-
-1. Paste source material or upload a `.txt`/`.md`/`.pdf`/`.docx` file, and enter a
-   prompt describing the diagram you want.
-2. The frontend opens a WebSocket to the backend (`/api/ws/generate-diagram-shaper`),
-   which calls OpenAI once for a typed result — a diagram type (linear process, decision
-   flow, hierarchy, architecture, or timeline), a title, and a list of shapes and
-   connectors, each shape with an exact position/size and a kind from a closed vocabulary
-   (oval, rectangle, diamond, dot, cylinder, hexagon) — schema-enforced by OpenAI's
-   structured outputs, not just prompted for. See `docs/architecture.md` for the full
-   data flow.
-3. The backend renders that same JSON to an SVG-in-HTML string and streams it back
-   alongside the JSON; the frontend just displays it in an iframe — no client-side
-   rendering or layout step at all.
-4. Click **Download PPTX** to export. The backend runs the *same* JSON through a second,
-   independent renderer straight into native PowerPoint shapes (`add_shape`,
-   `add_connector`, `add_textbox`) — every box is a movable PPT shape and every label is
-   genuinely editable text, not a screenshot or a glyph outline.
-5. v1 is generate-only: there's no in-app manual editing yet, so re-prompt to change
-   anything before export — editing after that point happens in PowerPoint itself, on the
-   real shapes.
 
 ## Using Sequence Diagram
 
@@ -218,7 +195,5 @@ updates, glossary, known gaps) is documented in
 
 ## More documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — Diagram Shaper's architecture and
-  data flow.
 - [`docs/spec-builder/`](docs/spec-builder) — Spec Builder's full feature docs, known
   issues, UX rationale, and roadmap.

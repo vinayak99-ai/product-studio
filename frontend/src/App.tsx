@@ -10,8 +10,6 @@ import { InfographicCanvas } from './components/InfographicCanvas'
 import { DeckCanvas } from './components/DeckCanvas'
 import { DiagramSlideSidebar } from './components/DiagramSlideSidebar'
 import { DiagramSlideCanvas } from './components/DiagramSlideCanvas'
-import { DiagramShaperSidebar } from './components/DiagramShaperSidebar'
-import { DiagramShaperCanvas } from './components/DiagramShaperCanvas'
 import { StorySidebar } from './components/StorySidebar'
 import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
@@ -25,7 +23,6 @@ import type { GenerateSequenceResponse } from './sequenceTypes'
 import type { GenerateDeckResponse, GenerateInfographicResponse } from './infographicTypes'
 import type { StoryScript } from './storyTypes'
 import type { DiagramSlideResult } from './diagramSlideTypes'
-import type { GenerateDiagramShaperResponse } from './diagramShaperTypes'
 
 const THEME_LABEL: Record<ThemeName, string> = {
   'fidelity-green': 'Green',
@@ -40,7 +37,6 @@ function App() {
   const [deckResult, setDeckResult] = useState<GenerateDeckResponse | null>(null)
   const [storyResult, setStoryResult] = useState<StoryScript | null>(null)
   const [diagramSlideResult, setDiagramSlideResult] = useState<DiagramSlideResult | null>(null)
-  const [diagramShaperResponse, setDiagramShaperResponse] = useState<GenerateDiagramShaperResponse | null>(null)
   // Sequence Diagram is the only tool left reading this -- it indexes
   // themePalettes directly (see SequenceCanvas.tsx/MessageEdge.tsx), not via
   // any CSS-variable injection, so this is just a plain color choice.
@@ -54,20 +50,6 @@ function App() {
       <Rail activeTool={activeTool} onSelect={setActiveTool} />
       <div className="flex min-h-0 flex-1 flex-col">
         <TopBar activeTool={activeTool} />
-
-        {/* Typed shapes/connectors (see backend/app/diagram_shaper_models.py)
-            generated once, rendered twice, independently: to SVG for this
-            preview (diagram_shaper_svg.py) and to native PPTX shapes for
-            export (diagram_shaper_pptx.py). Neither renderer parses the
-            other's output, so they can't drift apart -- and the export is
-            real, individually editable PowerPoint shapes and text, not a
-            screenshot. */}
-        <div className={`min-h-0 flex-1 ${activeTool === 'diagram_shaper' ? 'flex' : 'hidden'}`}>
-          <DiagramShaperSidebar onResult={setDiagramShaperResponse} />
-          <main className="flex min-w-0 flex-1 flex-col">
-            <DiagramShaperCanvas response={diagramShaperResponse} />
-          </main>
-        </div>
 
         {/* Sequence diagrams build their own canvas directly on @xyflow/react
             (no layout algorithm/settings panel of their own), but the same

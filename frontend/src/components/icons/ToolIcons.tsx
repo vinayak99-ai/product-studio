@@ -1,17 +1,5 @@
 import type { SVGProps } from 'react'
 
-export function DiagramShaperIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
-      <rect x="2.5" y="3.5" width="8" height="6" rx="1.5" />
-      <path d="M19.5 3.5 L22.5 8 L19.5 12.5 L16.5 8 Z" strokeLinejoin="round" />
-      <circle cx="6.5" cy="18" r="4" />
-      <path d="M10.5 9 L14 14" strokeLinecap="round" />
-      <path d="M17 12.5 L9.5 16" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 export function SpecIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>

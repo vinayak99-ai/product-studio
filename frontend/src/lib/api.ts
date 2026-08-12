@@ -2,7 +2,6 @@ import type { ExtractResponse } from '../types'
 import type { SequenceWsProgressMessage } from '../sequenceTypes'
 import type { DeckWsProgressMessage, InfographicDiagram, InfographicWsProgressMessage } from '../infographicTypes'
 import type { DiagramSlideResult, DiagramSlideWsProgressMessage } from '../diagramSlideTypes'
-import type { DiagramShaperResult, DiagramShaperWsProgressMessage } from '../diagramShaperTypes'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
@@ -165,48 +164,6 @@ export function exportDiagramSlideSvg(result: DiagramSlideResult): void {
   URL.revokeObjectURL(url)
 }
 
-export function openDiagramShaperGenerateSocket(
-  sourceMaterial: string,
-  prompt: string,
-  onMessage: (message: DiagramShaperWsProgressMessage) => void,
-  onError: () => void,
-): () => void {
-  const socket = new WebSocket(`${WS_BASE}/api/ws/generate-diagram-shaper`)
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({ source_material: sourceMaterial, prompt }))
-  }
-  socket.onmessage = (event) => {
-    onMessage(JSON.parse(event.data) as DiagramShaperWsProgressMessage)
-  }
-  socket.onerror = () => {
-    onError()
-  }
-
-  return () => socket.close()
-}
-
-// The deliverable is real native PPTX shapes built server-side straight from
-// the shape/connector JSON (app/diagram_shaper_pptx.py) -- no screenshot, no
-// rendering step client-side, so this just posts the JSON and downloads the
-// binary that comes back.
-export async function exportDiagramShaperPptx(result: DiagramShaperResult): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/diagram-shaper/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(result),
-  })
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'diagram-shaper.pptx'
-  link.click()
-  URL.revokeObjectURL(url)
-}
 
 const INFOGRAPHIC_FILENAMES: Record<InfographicDiagram['template'], string> = {
   radial_wheel: 'infographic-wheel.pptx',

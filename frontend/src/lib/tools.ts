@@ -3,7 +3,6 @@ import {
   DataIcon,
   DeepAnalysisIcon,
   DesignThinkingIcon,
-  DiagramShaperIcon,
   DiagramSlideIcon,
   DocQaIcon,
   InfographicIcon,
@@ -18,7 +17,6 @@ export type ToolId =
   | 'spec'
   | 'deep_analysis'
   | 'sequence'
-  | 'diagram_shaper'
   | 'diagram_slide'
   | 'infographic'
   | 'story'
@@ -67,16 +65,6 @@ export const TOOLS: ToolDef[] = [
     label: 'Sequence Diagram',
     status: 'ready',
     icon: SequenceIcon,
-  },
-  {
-    id: 'diagram_shaper',
-    label: 'Diagram Shaper',
-    status: 'ready',
-    icon: DiagramShaperIcon,
-    description:
-      'Describe a process, decision flow, hierarchy, architecture, or timeline and get a ' +
-      'diagram built from real, typed shapes and connectors -- exported as native, individually ' +
-      'editable PowerPoint shapes and text, not a flattened image.',
   },
   {
     id: 'diagram_slide',
