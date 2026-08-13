@@ -64,6 +64,20 @@ export function KnowledgeBaseIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function DiscoveryQaIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20.5 20.5 16 16" />
+      <path
+        d="M9 8.7c0-1.1.9-1.9 2-1.9s2 .8 2 1.9c0 .95-.6 1.35-1.3 1.85-.5.36-.7.7-.7 1.25"
+        strokeLinecap="round"
+      />
+      <circle cx="11" cy="13.9" r="0.15" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function DocQaIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>

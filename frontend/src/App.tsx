@@ -15,6 +15,7 @@ import { StoryCanvas } from './components/StoryCanvas'
 import { DesignThinkingPage } from './components/DesignThinkingPage'
 import { DocQaPage } from './components/DocQaPage'
 import { KnowledgeBasePage } from './components/KnowledgeBasePage'
+import { DiscoveryQaPage } from './components/DiscoveryQaPage'
 import { JiraPage } from './components/JiraPage'
 import { DeepAnalysisPage } from './components/DeepAnalysisPage'
 import { SequenceExportControls } from './components/SequenceExportControls'
@@ -153,6 +154,10 @@ function App() {
 
         <div className={`min-h-0 flex-1 ${activeTool === 'knowledge_base' ? 'flex' : 'hidden'}`}>
           <KnowledgeBasePage />
+        </div>
+
+        <div className={`min-h-0 flex-1 ${activeTool === 'discovery_qa' ? 'flex' : 'hidden'}`}>
+          <DiscoveryQaPage />
         </div>
 
         <div className={`min-h-0 flex-1 ${activeTool === 'jira' ? 'flex' : 'hidden'}`}>

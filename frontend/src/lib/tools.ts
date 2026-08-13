@@ -4,6 +4,7 @@ import {
   DeepAnalysisIcon,
   DesignThinkingIcon,
   DiagramSlideIcon,
+  DiscoveryQaIcon,
   DocQaIcon,
   InfographicIcon,
   JiraIcon,
@@ -23,6 +24,7 @@ export type ToolId =
   | 'story'
   | 'doc_qa'
   | 'knowledge_base'
+  | 'discovery_qa'
   | 'jira'
   | 'data'
 
@@ -108,6 +110,16 @@ export const TOOLS: ToolDef[] = [
       'Organize markdown docs from multiple teams into named collections (backed by ' +
       'ChromaDB), search across one or several at once, and get a cited, markdown-formatted ' +
       'answer grounded in exactly which document it came from.',
+  },
+  {
+    id: 'discovery_qa',
+    label: 'Discovery Q&A',
+    status: 'ready',
+    icon: DiscoveryQaIcon,
+    description:
+      'Turn a spec\'s edge cases into interview questions, ask them live and capture answers ' +
+      'one at a time, enrich with LLM polish, and export the whole thing as meeting minutes.',
+    sharedWith: 'Draws candidate questions from a Spec Builder project\'s generated spec',
   },
   {
     id: 'jira',

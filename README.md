@@ -14,6 +14,7 @@ config.
 | **Spec Builder** | Ready | Raw notes → a structured spec (user stories, requirements, architecture decisions, Jira-ready epics), plus diagrams, stakeholder briefs, and a two-way Jira sync. |
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
 | **Knowledge Base** | Ready | Markdown docs from multiple teams organized into named collections (backed by ChromaDB), with structure-aware chunking, an optional catalog file for per-document metadata, and cross-collection search that returns a cited, markdown-formatted answer traceable back to its source document. |
+| **Discovery Q&A** | Ready | A Spec Builder project's edge cases → candidate interview questions to pick from, a one-at-a-time live session for capturing answers and running notes as they're gathered, optional LLM enrichment of the raw answers, and a one-click meeting-minutes export. |
 | Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Infographic Builder's export pipeline. |
 | Data Explorer | Soon | Will search and track delivery status across every Spec Builder project at once. |
 
@@ -108,16 +109,17 @@ with one env var instead of Spec Builder needing its own separate model config.
 
 ```
 backend/      One FastAPI process: Sequence/Diagram Slides/Infographic/Story/
-              Knowledge Base (app/kb_*.py, routes/knowledge_base.py) routes
-              (/api/*) plus Spec Builder's app
-              (backend/app/spec_builder/) mounted at /pm/*
+              Knowledge Base (app/kb_*.py, routes/knowledge_base.py)/Discovery Q&A
+              (app/discovery_qa_*.py, routes/discovery_qa.py) routes (/api/*) plus
+              Spec Builder's app (backend/app/spec_builder/) mounted at /pm/*
 frontend/     One React app: the rail-nav shell, plus each tool's canvas/panels —
               Knowledge Base's live under frontend/src/components/knowledge-base/,
-              Spec Builder's own pages/components live under
+              Discovery Q&A's under frontend/src/components/discovery-qa/, Spec
+              Builder's own pages/components live under
               frontend/src/features/spec-builder/
 docs/         Spec Builder's full feature/known-issues/roadmap docs under
               docs/spec-builder/, Knowledge Base's design plan under
-              docs/knowledge-base/
+              docs/knowledge-base/, Discovery Q&A's under docs/discovery-qa/
 ```
 
 ## Navigating Product Studio
@@ -236,6 +238,28 @@ updates, glossary, known gaps) is documented in
 See [`docs/knowledge-base/PLAN.md`](docs/knowledge-base/PLAN.md) for the full design
 (chunking rules, catalog handling, the deferred file-type work beyond markdown).
 
+## Using Discovery Q&A
+
+1. Start a new session by picking a Spec Builder project that has a generated spec —
+   Discovery Q&A reads its Edge Cases section directly, the same way Story Builder reads
+   a project's PRD.
+2. Generate candidate interview questions (optionally with a focus prompt, e.g. "lean
+   toward mobile edge cases"); none are pre-selected, so you pick which ones to actually
+   ask, edit any of them inline, or add your own by hand. Save the selection as a session.
+3. In the meeting, answer questions one at a time from a side list that tracks which are
+   already answered — type the interviewee's answer as they give it, add or delete
+   questions on the fly if the conversation goes somewhere new, and jot freeform notes in
+   an always-available panel throughout, not just at the end.
+4. Optionally run **Enrich** afterward — an LLM cleans up shorthand/fragments in the raw
+   answers and notes into fuller prose, without inventing content the interviewee didn't
+   actually say.
+5. **Export meeting minutes** any time — before or after enriching — for a markdown dump
+   of every question and its answer (enriched if available, raw otherwise) plus the notes,
+   ready to send out.
+
+See [`docs/discovery-qa/PLAN.md`](docs/discovery-qa/PLAN.md) for the full design (data
+model, positional-mapping rationale for enrichment, and open decisions).
+
 ## More documentation
 
 - [`docs/spec-builder/`](docs/spec-builder) — Spec Builder's full feature docs, known
@@ -243,3 +267,5 @@ See [`docs/knowledge-base/PLAN.md`](docs/knowledge-base/PLAN.md) for the full de
 - [`docs/knowledge-base/PLAN.md`](docs/knowledge-base/PLAN.md) — Knowledge Base's design
   plan: chunking rules, catalog-file handling, cross-collection search, and the deferred
   file-type work beyond markdown.
+- [`docs/discovery-qa/PLAN.md`](docs/discovery-qa/PLAN.md) — Discovery Q&A's design plan:
+  data model, the live-session workflow, and enrichment/export rationale.
