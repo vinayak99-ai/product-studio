@@ -16,6 +16,7 @@ export function KnowledgeBasePage() {
   const [collectionsLoaded, setCollectionsLoaded] = useState(false)
   const [view, setView] = useState<KbView>({ name: 'search' })
   const [detail, setDetail] = useState<KbCollectionDetail | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refreshCollections = () =>
@@ -30,15 +31,23 @@ export function KnowledgeBasePage() {
     refreshCollections()
   }, [])
 
+  // Keyed on a counter, not just `view`, so the Retry button can force a
+  // re-fetch even when the user hasn't navigated away and back.
+  const [retryTick, setRetryTick] = useState(0)
+
   useEffect(() => {
     if (view.name === 'manage') {
+      setDetail(null)
+      setDetailError(null)
       getCollection(view.collectionId)
         .then(setDetail)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load collection.'))
+        .catch((err) => setDetailError(err instanceof Error ? err.message : 'Failed to load collection.'))
     } else {
       setDetail(null)
+      setDetailError(null)
     }
-  }, [view])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, retryTick])
 
   const handleCreate = async (name: string) => {
     const created = await createCollection(name)
@@ -93,6 +102,17 @@ export function KnowledgeBasePage() {
           )
         ) : detail ? (
           <KbCollectionManage detail={detail} onChange={handleDetailChange} />
+        ) : detailError ? (
+          <div className="p-6">
+            <p className="text-sm text-red-600">{detailError}</p>
+            <button
+              type="button"
+              onClick={() => setRetryTick((t) => t + 1)}
+              className="mt-3 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <p className="p-6 text-sm text-neutral-500">Loading…</p>
         )}
