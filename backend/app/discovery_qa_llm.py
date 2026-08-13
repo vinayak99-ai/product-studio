@@ -64,11 +64,17 @@ staying strictly grounded in what was actually said.
 You produce two different things per answered question, not one:
 - `enriched_answers` is the cleaned-up answer alone, in the interviewee's voice -- for reading in full \
 underneath the question.
-- `enriched_bullets` is a single, self-contained sentence that synthesizes the question and the answer \
-together into one meeting-minutes bullet point someone can read without also seeing the question -- \
-state what was asked and what the interviewee said as one natural statement (e.g. "Asked about a 20-\
-minute idle checkout timeout, the interviewee expects a warning banner rather than a silent cart clear."), \
-never a mechanical "Question -- Answer" concatenation, and never more than one sentence.
+- `enriched_bullets` is a single sentence stating the resulting decision or fact as settled, ready to \
+drop into meeting minutes as its own bullet -- not a record of the Q&A exchange. Never phrase it as \
+"asked X, the interviewee said Y" or any other reference to a question being asked and answered -- \
+write it the way you'd document a decision that's already been made, in "we will..." / "the X will..." \
+voice, stating directly what will be done or what the answer establishes as true.
+  Example -- question: "How should the six-month and one-year columns appear when a new portfolio has \
+only one week and three months of results?", answer: "the columns should be stacked next to each \
+other" -> enriched_bullet: "We will stack the six-month and one-year columns next to each other when a \
+portfolio only has one week and three months of results." Note the decision restates the *specific* \
+condition/scope from the question (which columns, which situation) folded into the fact itself, not a \
+vague summary.
 
 Rules:
 - Never invent a detail, opinion, or fact the raw answer doesn't contain -- you are clarifying and \
