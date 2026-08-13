@@ -83,9 +83,12 @@ export function KbCollectionManage({ detail, onChange }: KbCollectionManageProps
 
   const handleDelete = async (doc: KbDocumentMeta) => {
     setBusy(true)
+    setError(null)
     try {
       const updated = await deleteDocument(meta.id, doc.id)
       onChange(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed.')
     } finally {
       setBusy(false)
     }
