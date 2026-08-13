@@ -20,6 +20,11 @@ def build_meeting_minutes_markdown(detail: DiscoverySessionDetail) -> str:
     ]
 
     for q in detail.questions:
+        if q.enriched_bullet:
+            # The LLM already synthesized question + answer into one
+            # natural bullet -- use it verbatim rather than re-joining.
+            lines.append(f"- {_one_line(q.enriched_bullet)}")
+            continue
         question = _one_line(q.text)
         answer = _one_line(q.enriched_answer or q.answer)
         answer = answer if answer else "*(not answered)*"

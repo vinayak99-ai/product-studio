@@ -3,6 +3,7 @@ export interface DiscoveryQuestion {
   text: string
   answer: string
   enriched_answer: string
+  enriched_bullet: string
 }
 
 export interface CandidateQuestion {

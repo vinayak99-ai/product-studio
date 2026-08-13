@@ -131,7 +131,9 @@ def update_questions(session_id: str, questions: list[DiscoveryQuestion]) -> Dis
 
     meta = get_session_meta(session_id)
     _recompute_counts(meta, questions)
-    meta.is_enriched = bool(detail.enriched_notes) and all(q.enriched_answer for q in questions if q.answer)
+    meta.is_enriched = bool(detail.enriched_notes) and all(
+        q.enriched_answer and q.enriched_bullet for q in questions if q.answer
+    )
     _touch(meta)
     return DiscoverySessionDetail(meta=meta, questions=questions, notes=content["notes"], enriched_notes=content["enriched_notes"])
 
@@ -142,6 +144,7 @@ def save_answer(session_id: str, question_id: str, answer: str) -> DiscoverySess
         if q.id == question_id:
             q.answer = answer
             q.enriched_answer = ""  # stale once the raw answer it was built from changes
+            q.enriched_bullet = ""
     _save_content(session_id, detail.questions, detail.notes, detail.enriched_notes)
 
     meta = detail.meta

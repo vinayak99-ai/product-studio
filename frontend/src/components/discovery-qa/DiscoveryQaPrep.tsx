@@ -109,7 +109,7 @@ export function DiscoveryQaPrep({ onCreated, onCancel }: DiscoveryQaPrepProps) {
     try {
       const picked = questions
         .filter((q) => q.selected && q.text.trim())
-        .map((q) => ({ id: q.id, text: q.text.trim(), answer: '', enriched_answer: '' }))
+        .map((q) => ({ id: q.id, text: q.text.trim(), answer: '', enriched_answer: '', enriched_bullet: '' }))
       const meta = await createSession(sessionName.trim(), projectId, picked)
       const detail = { meta, questions: picked, notes: '', enriched_notes: '' }
       onCreated(detail)

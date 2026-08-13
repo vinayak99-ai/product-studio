@@ -61,11 +61,21 @@ interview into fuller prose suitable for meeting minutes -- expanding shorthand 
 complete sentences, fixing obvious typos, and organizing a rambling answer into clear points, while \
 staying strictly grounded in what was actually said.
 
+You produce two different things per answered question, not one:
+- `enriched_answers` is the cleaned-up answer alone, in the interviewee's voice -- for reading in full \
+underneath the question.
+- `enriched_bullets` is a single, self-contained sentence that synthesizes the question and the answer \
+together into one meeting-minutes bullet point someone can read without also seeing the question -- \
+state what was asked and what the interviewee said as one natural statement (e.g. "Asked about a 20-\
+minute idle checkout timeout, the interviewee expects a warning banner rather than a silent cart clear."), \
+never a mechanical "Question -- Answer" concatenation, and never more than one sentence.
+
 Rules:
 - Never invent a detail, opinion, or fact the raw answer doesn't contain -- you are clarifying and \
 organizing, not adding new content or speculating about what the user "probably" meant.
-- `enriched_answers` must be the same length as the numbered list of answers given below, in the exact \
-same order -- position N in your response corresponds to answer N in the input, not any id or label.
+- `enriched_answers` and `enriched_bullets` must each be the same length as the numbered list of answers \
+given below, in the exact same order -- position N in your response corresponds to answer N in the \
+input, not any id or label.
 - If a raw answer is already clear and well-formed, light-touch cleanup is fine -- don't pad it just to \
 make it longer.
 - `enriched_notes` does the same cleanup for the freeform notes block given separately -- organize it \
@@ -76,6 +86,7 @@ empty, return an empty string.
 
 class _EnrichDraft(BaseModel):
     enriched_answers: list[str] = Field(default_factory=list)
+    enriched_bullets: list[str] = Field(default_factory=list)
     enriched_notes: str = ""
 
 
@@ -96,13 +107,22 @@ async def enrich_session(questions: list[DiscoveryQuestion], notes: str) -> Enri
 
     # Positional mapping back onto the answered subset, then merged back
     # into the full question list -- unanswered questions simply keep an
-    # empty enriched_answer, they were never sent to the model.
-    enriched_by_id: dict[str, str] = {}
+    # empty enriched_answer/enriched_bullet, they were never sent to the model.
+    answers_by_id: dict[str, str] = {}
+    bullets_by_id: dict[str, str] = {}
     for i, q in enumerate(answered):
         if i < len(draft.enriched_answers):
-            enriched_by_id[q.id] = draft.enriched_answers[i]
+            answers_by_id[q.id] = draft.enriched_answers[i]
+        if i < len(draft.enriched_bullets):
+            bullets_by_id[q.id] = draft.enriched_bullets[i]
 
     updated_questions = [
-        q.model_copy(update={"enriched_answer": enriched_by_id.get(q.id, q.enriched_answer)}) for q in questions
+        q.model_copy(
+            update={
+                "enriched_answer": answers_by_id.get(q.id, q.enriched_answer),
+                "enriched_bullet": bullets_by_id.get(q.id, q.enriched_bullet),
+            }
+        )
+        for q in questions
     ]
     return EnrichResponse(questions=updated_questions, enriched_notes=draft.enriched_notes)

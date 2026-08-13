@@ -8,6 +8,10 @@ class DiscoveryQuestion(BaseModel):
     text: str
     answer: str = ""
     enriched_answer: str = ""
+    # A single sentence synthesizing the question + answer together --
+    # not a mechanical "question -- answer" concatenation -- so the export
+    # can drop it straight in as one meeting-minutes bullet point.
+    enriched_bullet: str = ""
 
 
 class CandidateQuestion(BaseModel):

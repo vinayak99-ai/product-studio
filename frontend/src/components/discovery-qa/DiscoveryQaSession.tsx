@@ -69,7 +69,7 @@ export function DiscoveryQaSession({ detail, onChange, onBack }: DiscoveryQaSess
     newQuestionCounter += 1
     const next: DiscoveryQuestion[] = [
       ...questions,
-      { id: `live_${Date.now()}_${newQuestionCounter}`, text: '', answer: '', enriched_answer: '' },
+      { id: `live_${Date.now()}_${newQuestionCounter}`, text: '', answer: '', enriched_answer: '', enriched_bullet: '' },
     ]
     const updated = await updateQuestions(meta.id, next)
     onChange(updated)
