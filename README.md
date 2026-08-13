@@ -26,7 +26,7 @@ Registry lives in `frontend/src/lib/tools.ts`, rendered by `frontend/src/compone
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt   # includes Spec Builder's Jira integration dep
+pip install -r requirements.txt   # includes Spec Builder's Jira dep + Knowledge Base's ChromaDB
 playwright install chromium       # for Diagram Slides' server-side rendering
 cp .env.example .env              # fill in the keys below
 uvicorn app.main:app --reload --port 8000
@@ -84,14 +84,20 @@ generate anything.
 
 ### LLM provider
 
-Every LLM call in the backend — Sequence, Diagram Slides, Infographic,
-Story Builder, and Spec Builder alike — goes through a single switchable provider (`backend/app/llm_client.py`)
-rather than each tool talking to a model API directly. `LLM_PROVIDER=openai` (the default)
-uses `OPENAI_API_KEY`/`OPENAI_MODEL` above. `LLM_PROVIDER=corporate` routes every call to
-your own internal LLM gateway instead — but `CorporateLLMProvider` in `llm_client.py` is a
-documented stub, not a working integration, until you fill in your gateway's actual
-request/response shape and auth scheme (its docstring walks through exactly what to
-implement). Until then, leave `LLM_PROVIDER=openai`.
+Every LLM call in the backend — Sequence, Diagram Slides, Infographic, Story Builder,
+Knowledge Base's search answers, and Spec Builder alike — goes through a single switchable
+provider (`backend/app/llm_client.py`) rather than each tool talking to a model API
+directly. `LLM_PROVIDER=openai` (the default) uses `OPENAI_API_KEY`/`OPENAI_MODEL` above.
+`LLM_PROVIDER=corporate` routes every call to your own internal LLM gateway instead — but
+`CorporateLLMProvider` in `llm_client.py` is a documented stub, not a working integration,
+until you fill in your gateway's actual request/response shape and auth scheme (its
+docstring walks through exactly what to implement). Until then, leave `LLM_PROVIDER=openai`.
+
+One exception: Knowledge Base's *embeddings* (`app/kb_vector_store.py`) always use OpenAI's
+`text-embedding-3-small` directly, regardless of `LLM_PROVIDER` — only the search answer's
+generation step goes through the switchable provider above. `OPENAI_API_KEY` still needs to
+be a real key for document ingestion/search to work even when running with
+`LLM_PROVIDER=corporate`.
 
 Spec Builder used to run on a separate framework (pydantic-ai, configured via `AIPM_MODEL`)
 pointed at Anthropic by default. That's gone — Spec Builder's 9 agents now go through the
@@ -101,14 +107,17 @@ with one env var instead of Spec Builder needing its own separate model config.
 ## Project layout
 
 ```
-backend/      One FastAPI process: Sequence/Diagram Slides/Infographic/
-              Story routes (/api/*) plus Spec Builder's app
+backend/      One FastAPI process: Sequence/Diagram Slides/Infographic/Story/
+              Knowledge Base (app/kb_*.py, routes/knowledge_base.py) routes
+              (/api/*) plus Spec Builder's app
               (backend/app/spec_builder/) mounted at /pm/*
 frontend/     One React app: the rail-nav shell, plus each tool's canvas/panels —
+              Knowledge Base's live under frontend/src/components/knowledge-base/,
               Spec Builder's own pages/components live under
               frontend/src/features/spec-builder/
 docs/         Spec Builder's full feature/known-issues/roadmap docs under
-              docs/spec-builder/
+              docs/spec-builder/, Knowledge Base's design plan under
+              docs/knowledge-base/
 ```
 
 ## Navigating Product Studio
@@ -182,19 +191,55 @@ updates, glossary, known gaps) is documented in
    its PRD directly (via Spec Builder's own markdown export) rather than taking pasted or
    uploaded material — set how long the talk should run, and optionally note the
    audience or what to emphasize.
-2. The backend plans a narrative arc over `/api/ws/generate-story`: it picks whatever
-   structure fits the product best (no fixed framework), but every arc is required to
-   establish relevance, business value, and differentiation somewhere in it, however
-   those beats end up labeled. Each beat gets a time slot, a supporting slide drawn from
-   Infographic Builder's own templates (Positioning statement and Value proposition map
-   naturally onto the differentiation and business-value beats), and narration written
-   *after* the slide so it references what's actually on screen — paced to the beat's
-   minutes, not just however long the model feels like writing.
+2. The backend plans a narrative arc over `/api/ws/generate-story`: it picks one named
+   framework from a fixed catalog — Minto Pyramid, SCQA, PAS, or Before/After/Bridge —
+   chosen for whichever fits the material and audience, and every framework front-loads
+   the answer (directly in Minto Pyramid, after one beat of context in the others) so a
+   senior-management audience gets the point early rather than sitting through a build-up
+   to a reveal. Every arc is still required to establish relevance, business value, and
+   differentiation somewhere in it, however those beats end up labeled. Each beat gets a
+   time slot, a supporting slide drawn from Infographic Builder's own templates
+   (Positioning statement and Value proposition map naturally onto the differentiation and
+   business-value beats), and narration written *after* the slide so it references what's
+   actually on screen — paced to the beat's minutes, not just however long the model feels
+   like writing. Whichever beat carries the framework's actual answer/recommendation is
+   written to state it directly and confidently, not hedged.
 3. A beat timeline on the left lets you jump between beats; each shows its slide (fully
-   editable, same as Infographic Builder) above its narration in an editable textarea.
-   Export the narration as a markdown script, the slides as a PPTX deck, or both.
+   editable, same as Infographic Builder) above its narration in an editable textarea. The
+   chosen framework is shown as a badge in the header. Export the narration as a markdown
+   script, the slides as a PPTX deck, or both.
+
+## Using Knowledge Base
+
+1. Three collections exist from first startup — **Firm Context** (always included in
+   search by default), **Project Context**, and **Systems Info** — and you can create as
+   many more as you want from the sidebar. This version ingests **`.md` only**.
+2. Open a collection and add documents: paste markdown or upload a `.md` file. Each one is
+   split with markdown-aware chunking — it splits on heading boundaries, never mid-table or
+   mid-code-block (a table too large for one chunk splits into row-groups with the header
+   row repeated), and every chunk is embedded via OpenAI (`text-embedding-3-small`) into a
+   local ChromaDB index, one per collection.
+3. Optionally flag one document as the collection's **catalog** — a markdown table mapping
+   filenames to what they contain. Its rows are parsed independently of chunking and used
+   to enrich every document it references with a description; rows that don't match an
+   actual document, or documents missing from the catalog, show up as non-blocking drift
+   warnings.
+4. Switch to **Search across collections**, pick one or more collections (Firm Context is
+   pre-checked), and ask a question. The backend queries every selected collection, merges
+   results by relevance, expands each match out to its full parent section before handing
+   it to the model, and returns a markdown-formatted answer with citations — click one to
+   jump straight to its source document.
+5. Replace or delete any document from its collection page; replacing re-chunks and
+   re-embeds from scratch, and if it's the catalog, re-enriches every document it
+   references, not just its own content.
+
+See [`docs/knowledge-base/PLAN.md`](docs/knowledge-base/PLAN.md) for the full design
+(chunking rules, catalog handling, the deferred file-type work beyond markdown).
 
 ## More documentation
 
 - [`docs/spec-builder/`](docs/spec-builder) — Spec Builder's full feature docs, known
   issues, UX rationale, and roadmap.
+- [`docs/knowledge-base/PLAN.md`](docs/knowledge-base/PLAN.md) — Knowledge Base's design
+  plan: chunking rules, catalog-file handling, cross-collection search, and the deferred
+  file-type work beyond markdown.
