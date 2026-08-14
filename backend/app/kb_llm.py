@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
 from app.kb_models import KbCitation, KbSearchResponse
 from app.llm_client import generate_structured
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are answering a question using only the source material provided below \
 -- numbered passages retrieved from a knowledge base. Answer strictly from this material; if it \
@@ -77,7 +81,16 @@ async def answer_question(question: str, passages: list[ContextPassage]) -> KbSe
 
     context_block = "\n\n".join(_format_passage(i + 1, p) for i, p in enumerate(passages))
     user_message = f"Question: {question}\n\nSource material:\n{context_block}"
-    draft = await generate_structured(SYSTEM_PROMPT, user_message, _AnswerDraft)
+    logger.info("answer_question: calling LLM with %d passage(s), %d char(s) of context", len(passages), len(context_block))
+    started = time.monotonic()
+    try:
+        draft = await generate_structured(SYSTEM_PROMPT, user_message, _AnswerDraft)
+    except Exception:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logger.exception("answer_question: LLM call FAILED after %.0fms", elapsed_ms)
+        raise
+    elapsed_ms = (time.monotonic() - started) * 1000
+    logger.info("answer_question: LLM call completed in %.0fms, %d cited passage(s)", elapsed_ms, len(draft.cited_passage_numbers))
 
     citations: list[KbCitation] = []
     seen_documents: set[str] = set()

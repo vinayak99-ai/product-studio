@@ -10,6 +10,8 @@ model -- see the plan's "Vector store (ChromaDB)" section for why.
 
 from __future__ import annotations
 
+import logging
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,6 +22,8 @@ from chromadb.utils import embedding_functions
 from app.config import get_settings
 from app.kb_chunking import MarkdownChunk
 from app.kb_models import KbChunkMetadata
+
+logger = logging.getLogger(__name__)
 
 DATA_ROOT = Path.home() / "kb-data" / "chroma"
 
@@ -66,7 +70,16 @@ def add_document_chunks(
     chunks: list[MarkdownChunk],
 ) -> None:
     if not chunks:
+        logger.info("add_document_chunks: %s has 0 chunks, nothing to embed", filename)
         return
+    logger.info(
+        "add_document_chunks: embedding %d chunk(s) for %r (collection=%s, document=%s) via OpenAI "
+        "text-embedding-3-small -- this is a live network call, it can hang or fail here",
+        len(chunks),
+        filename,
+        collection_id,
+        document_id,
+    )
     col = _chroma_collection(collection_id)
     ids = [_chunk_id(document_id, c.chunk_index) for c in chunks]
     documents = [c.text for c in chunks]
@@ -84,12 +97,29 @@ def add_document_chunks(
         ).model_dump()
         for c in chunks
     ]
-    col.add(ids=ids, documents=documents, metadatas=metadatas)
+    started = time.monotonic()
+    try:
+        col.add(ids=ids, documents=documents, metadatas=metadatas)
+    except Exception:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logger.exception(
+            "add_document_chunks: embedding FAILED for %r after %.0fms (%d chunks attempted)",
+            filename,
+            elapsed_ms,
+            len(chunks),
+        )
+        raise
+    elapsed_ms = (time.monotonic() - started) * 1000
+    logger.info(
+        "add_document_chunks: embedded and stored %d chunk(s) for %r in %.0fms", len(chunks), filename, elapsed_ms
+    )
 
 
 def delete_document_chunks(collection_id: str, document_id: str) -> None:
+    logger.info("delete_document_chunks: collection=%s document=%s", collection_id, document_id)
     col = _chroma_collection(collection_id)
     col.delete(where={"document_id": document_id})
+    logger.info("delete_document_chunks: done for document=%s", document_id)
 
 
 def update_document_description(collection_id: str, document_id: str, description: str) -> None:
@@ -99,6 +129,7 @@ def update_document_description(collection_id: str, document_id: str, descriptio
     col = _chroma_collection(collection_id)
     existing = col.get(where={"document_id": document_id})
     if not existing["ids"]:
+        logger.info("update_document_description: no chunks found for document=%s, nothing to update", document_id)
         return
     updated_metadatas = []
     for metadata in existing["metadatas"]:
@@ -106,21 +137,35 @@ def update_document_description(collection_id: str, document_id: str, descriptio
         updated["description"] = description
         updated_metadatas.append(updated)
     col.update(ids=existing["ids"], metadatas=updated_metadatas)
+    logger.info(
+        "update_document_description: updated %d chunk(s) for document=%s", len(existing["ids"]), document_id
+    )
 
 
 def delete_collection_index(collection_id: str) -> None:
+    logger.info("delete_collection_index: collection=%s", collection_id)
     try:
         _client().delete_collection(name=collection_id)
     except Exception:
-        pass  # nothing to delete -- fine, matches JSON-side delete's ignore_errors
+        logger.info("delete_collection_index: no Chroma index existed for collection=%s (nothing to delete)", collection_id)
 
 
 def query_collection(collection_id: str, question: str, n_results: int) -> list[dict]:
     col = _chroma_collection(collection_id)
     count = col.count()
     if count == 0:
+        logger.info("query_collection: collection=%s is empty, skipping", collection_id)
         return []
-    result = col.query(query_texts=[question], n_results=min(n_results, count))
+    started = time.monotonic()
+    try:
+        # Embeds `question` via the same OpenAI call as ingestion -- another
+        # live network call that can hang or fail here.
+        result = col.query(query_texts=[question], n_results=min(n_results, count))
+    except Exception:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logger.exception("query_collection: query embedding FAILED for collection=%s after %.0fms", collection_id, elapsed_ms)
+        raise
+    elapsed_ms = (time.monotonic() - started) * 1000
     hits = []
     for i in range(len(result["ids"][0])):
         hits.append(
@@ -131,6 +176,7 @@ def query_collection(collection_id: str, question: str, n_results: int) -> list[
                 "distance": result["distances"][0][i],
             }
         )
+    logger.info("query_collection: collection=%s returned %d hit(s) in %.0fms", collection_id, len(hits), elapsed_ms)
     return hits
 
 
@@ -141,11 +187,14 @@ def federated_query(collection_ids: list[str], question: str) -> list[dict]:
     they all share the same embedding function. Returns the top
     FINAL_TOP_N across the whole merged pool, not a naive per-collection
     concatenation."""
+    logger.info("federated_query: searching %d collection(s) for %r", len(collection_ids), question)
     pooled: list[dict] = []
     for collection_id in collection_ids:
         pooled.extend(query_collection(collection_id, question, PER_COLLECTION_CANDIDATES))
     pooled.sort(key=lambda hit: hit["distance"])
-    return pooled[:FINAL_TOP_N]
+    merged = pooled[:FINAL_TOP_N]
+    logger.info("federated_query: %d pooled hit(s), returning top %d", len(pooled), len(merged))
+    return merged
 
 
 def expand_to_parent_section(collection_id: str, document_id: str, heading_path: str) -> str:

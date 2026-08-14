@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 
 from app.kb_models import KbCollectionMeta, KbDocumentMeta
+
+logger = logging.getLogger(__name__)
 
 # Same file-based-persistence philosophy as every other tool in this
 # backend (see doc_qa_persistence.py's DATA_ROOT) -- collection/document
@@ -126,6 +129,7 @@ def save_document(
     )
     _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2))
     _document_content_path(collection_id, document_id).write_text(content)
+    logger.info("save_document: wrote %r as document=%s in collection=%s", filename, document_id, collection_id)
 
     col_meta = get_collection(collection_id)
     col_meta.document_count = len(list_documents(collection_id))
@@ -159,6 +163,7 @@ def set_document_chunk_count(collection_id: str, document_id: str, chunk_count: 
 def delete_document(collection_id: str, document_id: str) -> None:
     _document_meta_path(collection_id, document_id).unlink(missing_ok=True)
     _document_content_path(collection_id, document_id).unlink(missing_ok=True)
+    logger.info("delete_document: removed document=%s from collection=%s", document_id, collection_id)
 
     col_meta = get_collection(collection_id)
     col_meta.document_count = len(list_documents(collection_id))

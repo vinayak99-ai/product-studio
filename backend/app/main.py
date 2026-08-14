@@ -5,15 +5,19 @@
 # Proactor event loop policy) does NOT live here: it has to run before
 # uvicorn creates its event loop, and with --reload uvicorn can create that
 # loop before this module gets (re-)imported, so a module-level line here
-# isn't reliably early enough. See run.py, which sets the policy in a
-# standalone script before uvicorn is even imported, then starts uvicorn
-# programmatically -- run that (or start.ps1) instead of the bare `uvicorn
-# app.main:app` command on Windows.
+# isn't reliably early enough. See run_backend.py (repo root), which sets
+# the policy in a standalone script before uvicorn is even imported, then
+# starts uvicorn programmatically -- run that (or start-backend.ps1/
+# start.ps1) instead of the bare `uvicorn app.main:app` command on Windows.
 
-from fastapi import FastAPI, UploadFile
+import logging
+import time
+
+from fastapi import FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.logging_config import configure_logging
 from app.extraction import extract_text
 from app.routes.sequence import router as sequence_router
 from app.routes.infographic import router as infographic_router
@@ -30,6 +34,8 @@ from app.kb_models import SEED_COLLECTIONS, SEED_DEFAULT_INCLUDED
 from app import kb_persistence
 
 settings = get_settings()
+configure_logging(settings.log_level)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Product Studio API")
 
@@ -40,6 +46,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _log_requests(request: Request, call_next):
+    """Logs every request's outcome and, critically, logs the full
+    traceback for ANY unhandled exception before FastAPI turns it into a
+    generic 500 -- otherwise an exception type nobody explicitly catches
+    (e.g. in a route that only catches OpenAIError) would show up in the
+    frontend as an opaque error with nothing in the backend log to explain
+    it. Re-raises after logging so normal error handling is unaffected."""
+    start = time.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (time.monotonic() - start) * 1000
+        logger.exception(
+            "UNHANDLED EXCEPTION: %s %s (after %.0fms)", request.method, request.url.path, elapsed_ms
+        )
+        raise
+    elapsed_ms = (time.monotonic() - start) * 1000
+    logger.info("%s %s -> %d (%.0fms)", request.method, request.url.path, response.status_code, elapsed_ms)
+    return response
 
 
 @app.get("/api/health")

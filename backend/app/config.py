@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # the /pm mount (app/spec_builder/main.py), so it has to cover whichever
     # one the frontend actually loaded from.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # DEBUG, INFO, WARNING, ERROR -- see app/logging_config.py. INFO is
+    # enough to see every Knowledge Base step (upload/replace/delete,
+    # chunking, embedding, search); DEBUG also unmutes httpx/openai/
+    # chromadb's own request-level logs.
+    log_level: str = "INFO"
 
     @property
     def cors_origin_list(self) -> list[str]:

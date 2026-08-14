@@ -99,6 +99,7 @@ from `frontend/`) — close a window whenever you want to stop that process.
 | `CORPORATE_LLM_BASE_URL`, `CORPORATE_LLM_API_KEY`, `CORPORATE_LLM_MODEL` | Your internal LLM gateway's connection details, used only when `LLM_PROVIDER=corporate` |
 | `CORS_ORIGINS` | Comma-separated allowed origins (default covers `localhost`/`127.0.0.1:5173`) |
 | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` | Optional — enables Spec Builder's Jira push/import/sync; leave unset to skip |
+| `LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR` — see [Logging](#logging) below |
 
 ### LLM provider
 
@@ -121,6 +122,28 @@ Spec Builder used to run on a separate framework (pydantic-ai, configured via `A
 pointed at Anthropic by default. That's gone — Spec Builder's 9 agents now go through the
 same `llm_client.py` as every other tool, so the whole backend switches providers together
 with one env var instead of Spec Builder needing its own separate model config.
+
+### Logging
+
+Every backend request logs to two places at once: the console (whichever terminal or
+PowerShell window is running the backend) and a rotating file at
+`~/product-studio-logs/backend.log` — so a crash that takes the terminal's scrollback with
+it, or a window closed before you noticed the error, doesn't lose the trail. `LOG_LEVEL`
+(default `INFO`) controls verbosity; set it to `DEBUG` to also unmute httpx/openai/chromadb's
+own request-level logs.
+
+A global middleware (`app/main.py`) logs every request's method/path/status/timing, and logs
+the full traceback for *any* unhandled exception before FastAPI turns it into a generic 500 —
+so nothing fails silently with no trace in the logs, even in a route that doesn't explicitly
+catch that error type.
+
+Knowledge Base specifically has step-by-step tracing at `INFO` (`app/routes/knowledge_base.py`,
+`app/kb_vector_store.py`, `app/kb_persistence.py`, `app/kb_llm.py`) — every upload, replace,
+delete, and search logs its inputs, and the OpenAI embedding/LLM calls (the two places a
+network issue can actually hang or fail) are logged immediately before and after, with timing.
+If the backend process itself dies mid-request rather than returning a clean error — surfacing
+in the browser as "Failed to fetch" — the last log line before the gap is the direct answer to
+"what was it doing when it died."
 
 ## Project layout
 
