@@ -11,6 +11,7 @@ model -- see the plan's "Vector store (ChromaDB)" section for why.
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +27,10 @@ from app.kb_models import KbChunkMetadata
 logger = logging.getLogger(__name__)
 
 DATA_ROOT = Path.home() / "kb-data" / "chroma"
+# Tracks which ChromaDB version wrote the data directory; a version change
+# means an incompatible on-disk format (e.g. 0.x hnswlib → 1.x Rust bindings)
+# that would cause a native Rust panic on the first write if left in place.
+_VERSION_FILE = DATA_ROOT.parent / "chroma_version"
 
 # How many chunks to pull per collection before merging, when a search
 # spans multiple collections -- wider than the final answer's context so
@@ -35,8 +40,38 @@ PER_COLLECTION_CANDIDATES = 8
 FINAL_TOP_N = 8
 
 
+def _ensure_compatible_chroma_data() -> None:
+    """Wipe DATA_ROOT when the installed ChromaDB version doesn't match what
+    wrote it. Called once before the client is created so the directory is
+    always in a state the current bindings can safely open."""
+    current = chromadb.__version__
+    stored = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else None
+    if stored == current:
+        return
+    if stored is None and DATA_ROOT.exists() and any(DATA_ROOT.iterdir()):
+        logger.warning(
+            "kb_vector_store: existing ChromaDB data at %s has no version marker "
+            "-- wiping to avoid format mismatch with installed version %s",
+            DATA_ROOT,
+            current,
+        )
+    elif stored is not None:
+        logger.warning(
+            "kb_vector_store: ChromaDB version changed %s -> %s "
+            "-- wiping stale vector index at %s (document files are unaffected)",
+            stored,
+            current,
+            DATA_ROOT,
+        )
+    if DATA_ROOT.exists():
+        shutil.rmtree(DATA_ROOT)
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    _VERSION_FILE.write_text(current)
+
+
 @lru_cache
 def _client() -> chromadb.ClientAPI:
+    _ensure_compatible_chroma_data()
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     return chromadb.PersistentClient(path=str(DATA_ROOT))
 
