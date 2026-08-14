@@ -27,12 +27,14 @@ to reason about it. Every other platform keeps --reload, since the
 Proactor/Selector split -- and therefore this entire problem -- is
 Windows-only; there's no correctness reason to give it up elsewhere.
 
-Does not create or activate a virtual environment: runs with whichever
-Python interpreter you invoke this script with.
+Does not create or activate a virtual environment itself: runs with
+whichever Python interpreter you invoke this script with. start.ps1
+invokes it with backend\.venv's interpreter specifically, and wraps it in
+its own detached console window so it survives closing whatever shell
+launched it.
 
 Usage: `python run_backend.py` from the repo root (same place this file
-lives) -- start-backend.ps1 wraps this in its own detached console window
-so it survives closing whatever shell launched it.
+lives).
 """
 
 import asyncio
