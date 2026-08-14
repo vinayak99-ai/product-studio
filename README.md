@@ -22,15 +22,23 @@ Registry lives in `frontend/src/lib/tools.ts`, rendered by `frontend/src/compone
 
 ## Getting started
 
+One-time setup for each side:
+
 ```bash
-# Backend — one process serves every tool
+# Backend
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt   # includes Spec Builder's Jira dep + Knowledge Base's ChromaDB
 playwright install chromium       # for Diagram Slides' server-side rendering
 cp .env.example .env              # fill in the keys below
-uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+# Frontend
+cd frontend
+npm install
+cp .env.example .env   # optional, defaults already point at localhost:8000
 ```
 
 Supports Python 3.9 through 3.13. On 3.9, Pydantic models rely on `from __future__
@@ -38,39 +46,32 @@ import annotations` plus the `eval_type_backport` dependency to resolve modern
 `X | None`-style type hints, which aren't natively supported until 3.10 — both are
 already wired up, no extra setup needed.
 
-**On Windows**, use `python run.py` (or `.\start.ps1`, which also activates the venv)
-instead of the plain `uvicorn` command above:
+Then, from the **repo root**, start both with one command:
 
-```powershell
-cd backend
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-playwright install chromium
-copy .env.example .env
+```bash
 python run.py
 ```
 
+This starts the frontend (`npm run dev`) as a background process and the backend
+(`uvicorn`) in the foreground in the same terminal — both sets of logs interleave
+there, and Ctrl+C stops both. It does not create or activate a virtual environment
+itself: if you set one up above, activate it in your shell first (`source
+backend/.venv/bin/activate`, or the Windows equivalent) — `run.py` just runs the
+backend with whichever Python you invoke it with.
+
+Open http://localhost:5173 once both have started.
+
+**On Windows**, `run.py` also forces the asyncio event loop policy to Proactor
+before uvicorn is even imported, and runs the backend without `--reload` there.
 Plain `uvicorn app.main:app --reload` on Windows runs on `WindowsSelectorEventLoop`,
 which can't launch subprocesses — and Diagram Slides' PPTX export launches headless
-Chromium via Playwright to render each diagram, which needs exactly that. `run.py`
-forces the Proactor event loop policy before uvicorn is even imported, and runs
-without `--reload` there — `--reload`'s file-watcher runs the actual server in a
-*separate child process* it manages, and that child isn't guaranteed to inherit
-the policy either, which reopens the same ordering problem. Every other tool works
-identically either way — this only affects Diagram Slides' export button. No
-auto-reload on Windows with this launcher: restart it after backend code changes.
-
-```bash
-# Frontend — one Vite dev server for every tool, in a second terminal
-cd frontend
-npm install
-cp .env.example .env   # optional, defaults already point at localhost:8000
-npm run dev
-```
-
-Open http://localhost:5173 — the backend must be running for any tool to actually
-generate anything.
+Chromium via Playwright to render each diagram, which needs exactly that.
+`--reload`'s file-watcher runs the actual server in a *separate child process* it
+manages, and that child isn't guaranteed to inherit the policy either, which
+reopens the same ordering problem, so `--reload` is off on Windows specifically —
+restart `run.py` after backend code changes there. Every other tool works
+identically either way — this only affects Diagram Slides' export button. Every
+other platform keeps `--reload` on.
 
 ### Environment variables (all in `backend/.env`)
 
