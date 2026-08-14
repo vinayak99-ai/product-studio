@@ -2,12 +2,13 @@ import { useState } from 'react'
 import type { KbCollectionMeta } from '../../knowledgeBaseTypes'
 import { EditableText } from '../infographic/EditableText'
 
-export type KbView = { name: 'search' } | { name: 'manage'; collectionId: string }
+export type KbView = { name: 'search' } | { name: 'goal' } | { name: 'manage'; collectionId: string }
 
 interface KnowledgeBaseSidebarProps {
   collections: KbCollectionMeta[]
   view: KbView
   onSelectSearch: () => void
+  onSelectGoal: () => void
   onSelectCollection: (id: string) => void
   onCreate: (name: string) => Promise<void>
   onRename: (id: string, name: string) => Promise<void>
@@ -18,6 +19,7 @@ export function KnowledgeBaseSidebar({
   collections,
   view,
   onSelectSearch,
+  onSelectGoal,
   onSelectCollection,
   onCreate,
   onRename,
@@ -45,11 +47,21 @@ export function KnowledgeBaseSidebar({
       <button
         type="button"
         onClick={onSelectSearch}
-        className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
+        className={`mb-1 flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
           view.name === 'search' ? 'bg-primary/10 text-primary' : 'text-neutral-700 hover:bg-neutral-100'
         }`}
       >
         🔍 Search across collections
+      </button>
+
+      <button
+        type="button"
+        onClick={onSelectGoal}
+        className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
+          view.name === 'goal' ? 'bg-primary/10 text-primary' : 'text-neutral-700 hover:bg-neutral-100'
+        }`}
+      >
+        🎯 Goals
       </button>
 
       <div className="mb-2 flex items-center justify-between px-1">

@@ -92,3 +92,21 @@ class KbCollectionDetail(BaseModel):
     meta: KbCollectionMeta
     documents: list[KbDocumentMeta] = Field(default_factory=list)
     drift_warnings: list[KbDriftWarning] = Field(default_factory=list)
+
+
+class KbGoalRequest(BaseModel):
+    goal: str
+
+
+class KbGoalGap(BaseModel):
+    topic: str
+    why_needed: str
+    suggested_doc_type: str
+
+
+class KbGoalResponse(BaseModel):
+    # None when the goal couldn't be answered -- see KbGoalGap below instead.
+    answer_markdown: str | None = None
+    citations: list[KbCitation] = Field(default_factory=list)
+    gaps: list[KbGoalGap] = Field(default_factory=list)
+    rounds_run: int

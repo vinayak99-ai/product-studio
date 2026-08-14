@@ -42,3 +42,16 @@ export interface KbSearchResponse {
   answer_markdown: string
   citations: KbCitation[]
 }
+
+export interface KbGoalGap {
+  topic: string
+  why_needed: string
+  suggested_doc_type: string
+}
+
+export interface KbGoalResponse {
+  answer_markdown: string | null
+  citations: KbCitation[]
+  gaps: KbGoalGap[]
+  rounds_run: number
+}

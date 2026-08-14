@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from openai import OpenAIError
 
-from app import kb_persistence, kb_vector_store
+from app import kb_agent, kb_persistence, kb_vector_store
 from app.kb_catalog import detect_drift, match_entries_to_documents, parse_catalog_tables
 from app.kb_chunking import chunk_markdown
 from app.kb_llm import ContextPassage, answer_question
@@ -14,6 +14,8 @@ from app.kb_models import (
     KbCollectionDetail,
     KbCollectionMeta,
     KbDocumentMeta,
+    KbGoalRequest,
+    KbGoalResponse,
     KbSearchRequest,
     KbSearchResponse,
     RenameCollectionRequest,
@@ -270,4 +272,27 @@ async def api_search(request: KbSearchRequest):
         logger.exception("search: unexpected error answering question")
         raise HTTPException(status_code=500, detail="Failed to answer the question -- see backend logs for details.")
     logger.info("search: complete, %d citation(s)", len(result.citations))
+    return result
+
+
+@router.post("/goal", response_model=KbGoalResponse)
+async def api_goal(request: KbGoalRequest):
+    goal = request.goal.strip()
+    logger.info("goal: %r", goal)
+    if not goal:
+        raise HTTPException(status_code=400, detail="Enter a goal.")
+
+    collection_ids = [c.id for c in kb_persistence.list_collections()]
+    if not collection_ids:
+        raise HTTPException(status_code=400, detail="No collections exist yet -- create one and add documents first.")
+
+    try:
+        result = await kb_agent.run_goal(goal, collection_ids)
+    except OpenAIError as exc:
+        logger.exception("goal: LLM provider error")
+        raise HTTPException(status_code=502, detail=f"LLM provider error: {exc}")
+    except Exception:
+        logger.exception("goal: unexpected error")
+        raise HTTPException(status_code=500, detail="Failed to work through the goal -- see backend logs for details.")
+    logger.info("goal: complete, rounds=%d, gaps=%d", result.rounds_run, len(result.gaps))
     return result

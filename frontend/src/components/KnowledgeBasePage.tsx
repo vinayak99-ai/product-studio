@@ -10,6 +10,7 @@ import type { KbCollectionDetail, KbCollectionMeta } from '../knowledgeBaseTypes
 import { KnowledgeBaseSidebar, type KbView } from './knowledge-base/KnowledgeBaseSidebar'
 import { KbCollectionManage } from './knowledge-base/KbCollectionManage'
 import { KbSearchPanel } from './knowledge-base/KbSearchPanel'
+import { KbGoalPanel } from './knowledge-base/KbGoalPanel'
 
 export function KnowledgeBasePage() {
   const [collections, setCollections] = useState<KbCollectionMeta[]>([])
@@ -79,6 +80,7 @@ export function KnowledgeBasePage() {
         collections={collections}
         view={view}
         onSelectSearch={() => setView({ name: 'search' })}
+        onSelectGoal={() => setView({ name: 'goal' })}
         onSelectCollection={(id) => setView({ name: 'manage', collectionId: id })}
         onCreate={handleCreate}
         onRename={handleRename}
@@ -100,6 +102,8 @@ export function KnowledgeBasePage() {
           ) : (
             <p className="p-6 text-sm text-neutral-500">Loading…</p>
           )
+        ) : view.name === 'goal' ? (
+          <KbGoalPanel onOpenDocument={(collectionId) => setView({ name: 'manage', collectionId })} />
         ) : detail ? (
           <KbCollectionManage detail={detail} onChange={handleDetailChange} />
         ) : detailError ? (

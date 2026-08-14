@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { search } from '../../lib/knowledgeBaseApi'
+import { downloadAnswerAsMarkdown, search } from '../../lib/knowledgeBaseApi'
 import type { KbCollectionMeta, KbSearchResponse } from '../../knowledgeBaseTypes'
 
 interface KbSearchPanelProps {
@@ -17,6 +17,7 @@ export function KbSearchPanel({ collections, onOpenDocument }: KbSearchPanelProp
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<KbSearchResponse | null>(null)
+  const [answeredQuestion, setAnsweredQuestion] = useState('')
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -32,8 +33,10 @@ export function KbSearchPanel({ collections, onOpenDocument }: KbSearchPanelProp
     setBusy(true)
     setError(null)
     try {
-      const res = await search(Array.from(selected), question.trim())
+      const askedQuestion = question.trim()
+      const res = await search(Array.from(selected), askedQuestion)
       setResult(res)
+      setAnsweredQuestion(askedQuestion)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed.')
     } finally {
@@ -98,6 +101,16 @@ export function KbSearchPanel({ collections, onOpenDocument }: KbSearchPanelProp
 
       {result ? (
         <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Answer</span>
+            <button
+              type="button"
+              onClick={() => downloadAnswerAsMarkdown(answeredQuestion, result)}
+              className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:border-primary hover:text-primary"
+            >
+              Download
+            </button>
+          </div>
           <div className="prose prose-sm max-w-none rounded-xl border border-neutral-200 bg-white p-4 text-neutral-800 prose-headings:text-neutral-900 prose-strong:text-neutral-900">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.answer_markdown}</ReactMarkdown>
           </div>
