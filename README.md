@@ -46,32 +46,48 @@ import annotations` plus the `eval_type_backport` dependency to resolve modern
 `X | None`-style type hints, which aren't natively supported until 3.10 — both are
 already wired up, no extra setup needed.
 
-Then, from the **repo root**, start both with one command:
+Then start each side from the **repo root**, in its own terminal:
 
 ```bash
-python run.py
+python run_backend.py   # backend — same as `uvicorn app.main:app --reload --port 8000`,
+                         # see the file's docstring for the one Windows-specific difference
 ```
 
-This starts the frontend (`npm run dev`) as a background process and the backend
-(`uvicorn`) in the foreground in the same terminal — both sets of logs interleave
-there, and Ctrl+C stops both. It does not create or activate a virtual environment
-itself: if you set one up above, activate it in your shell first (`source
-backend/.venv/bin/activate`, or the Windows equivalent) — `run.py` just runs the
-backend with whichever Python you invoke it with.
+```bash
+cd frontend && npm run dev   # frontend
+```
 
-Open http://localhost:5173 once both have started.
+Neither command creates or activates a virtual environment itself: if you set one up
+above, activate it in your shell first (`source backend/.venv/bin/activate`, or the
+Windows equivalent) — `run_backend.py` just runs with whichever Python you invoke it
+with. Open http://localhost:5173 once both have started.
 
-**On Windows**, `run.py` also forces the asyncio event loop policy to Proactor
-before uvicorn is even imported, and runs the backend without `--reload` there.
-Plain `uvicorn app.main:app --reload` on Windows runs on `WindowsSelectorEventLoop`,
-which can't launch subprocesses — and Diagram Slides' PPTX export launches headless
-Chromium via Playwright to render each diagram, which needs exactly that.
-`--reload`'s file-watcher runs the actual server in a *separate child process* it
-manages, and that child isn't guaranteed to inherit the policy either, which
-reopens the same ordering problem, so `--reload` is off on Windows specifically —
-restart `run.py` after backend code changes there. Every other tool works
-identically either way — this only affects Diagram Slides' export button. Every
-other platform keeps `--reload` on.
+**On Windows**, `run_backend.py` forces the asyncio event loop policy to Proactor
+before uvicorn is even imported, and runs the backend without `--reload`. Plain
+`uvicorn app.main:app --reload` on Windows runs on `WindowsSelectorEventLoop`, which
+can't launch subprocesses — and Diagram Slides' PPTX export launches headless
+Chromium via Playwright to render each diagram, which needs exactly that. `--reload`'s
+file-watcher runs the actual server in a *separate child process* it manages, and that
+child isn't guaranteed to inherit the policy either, which reopens the same ordering
+problem, so `--reload` is off on Windows specifically — restart `run_backend.py` after
+backend code changes there. Every other tool works identically either way — this only
+affects Diagram Slides' export button. Every other platform keeps `--reload` on.
+
+**On Windows**, three PowerShell scripts at the repo root give you the same two
+processes as detached, independently closeable windows instead — useful if you're
+launching from VS Code's integrated terminal and don't want either process tied to
+its lifetime (closing VS Code, or the terminal that ran the script, does not close
+these):
+
+```powershell
+.\start-backend.ps1    # backend, in its own new window
+.\start-frontend.ps1   # frontend, in its own new window
+.\start.ps1            # both of the above, one command, still two separate windows
+```
+
+Each opens a brand new `powershell.exe` window running the same commands as above
+(`start-backend.ps1` calls `run_backend.py`, `start-frontend.ps1` calls `npm run dev`
+from `frontend/`) — close a window whenever you want to stop that process.
 
 ### Environment variables (all in `backend/.env`)
 
