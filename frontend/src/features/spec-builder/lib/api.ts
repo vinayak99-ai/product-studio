@@ -6,7 +6,6 @@ import type {
   DiffEntry,
   ExportFormat,
   GeneratedPRD,
-  GenerateResponse,
   GlossaryTerm,
   JiraExportResponse,
   JiraImportResponse,
@@ -15,6 +14,9 @@ import type {
   ProjectMeta,
   SpecInput,
   Stakeholder,
+  StepEditResponse,
+  StepGenerateResponse,
+  StepId,
   UpdateAudience,
 } from "./types"
 
@@ -57,29 +59,24 @@ export const api = {
       method: "DELETE",
     }),
 
-  generate: (projectId: string, rawNotes: string) =>
-    request<GenerateResponse>(`/projects/${projectId}/generate`, {
+  // ---- Step 1: Overview (raw notes -> extraction -> clarify -> draft) ----
+  generateOverview: (projectId: string, rawNotes: string) =>
+    request<StepGenerateResponse>(`/projects/${projectId}/steps/overview/generate`, {
       method: "POST",
       body: JSON.stringify({ raw_notes: rawNotes }),
     }),
 
-  submitClarifications: (projectId: string, answers: Record<string, string>) =>
-    request<GenerateResponse>(`/projects/${projectId}/clarify`, {
+  submitOverviewClarifications: (projectId: string, answers: Record<string, string>) =>
+    request<StepGenerateResponse>(`/projects/${projectId}/steps/overview/clarify`, {
       method: "POST",
       body: JSON.stringify({ answers }),
     }),
 
   getPendingClarification: (projectId: string) =>
-    request<{ questions: ClarifyQuestion[] }>(`/projects/${projectId}/pending-clarification`),
+    request<{ questions: ClarifyQuestion[]; step: StepId }>(`/projects/${projectId}/pending-clarification`),
 
   getGenerationStatus: (projectId: string) =>
     request<{ stage: string | null }>(`/projects/${projectId}/generation-status`),
-
-  regenerateSection: (projectId: string, artifactId: string, section: string, context: string) =>
-    request<{ prd: GeneratedPRD }>(
-      `/projects/${projectId}/artifacts/${artifactId}/regenerate-section`,
-      { method: "POST", body: JSON.stringify({ section, context }) }
-    ),
 
   getInput: (projectId: string) => request<SpecInput>(`/projects/${projectId}/input`),
 
@@ -89,15 +86,51 @@ export const api = {
       body: JSON.stringify({ raw_notes: rawNotes }),
     }),
 
-  // Full-pipeline rerun from the project's persisted input (see getInput/
-  // saveInput above) -- unlike every other regenerate* method here, which
-  // returns one field of a GeneratedPRD to merge, this one is a genuine
-  // regenerate-the-whole-spec action: the caller should replace its entire
-  // local `prd` state with the response's `prd`, same as after `generate`.
-  regenerateSpec: (projectId: string) =>
-    request<GenerateResponse>(`/projects/${projectId}/regenerate`, {
+  // Resets the WHOLE pipeline back to not_started from the project's
+  // persisted input (see getInput/saveInput above) -- does not auto-run
+  // it; call generateOverview afterward to start drafting again.
+  resetPipeline: (projectId: string) =>
+    request<ProjectMeta>(`/projects/${projectId}/regenerate`, {
       method: "POST",
     }),
+
+  // ---- Steps 2-4 & 6: Stories, Requirements, Test Cases, Epics ----
+  // (Architecture is the one interactive step -- see the dedicated
+  // architecture* methods below.)
+  generateStep: (projectId: string, step: StepId) =>
+    request<GeneratedPRD>(`/projects/${projectId}/steps/${step}/generate`, { method: "POST" }),
+
+  revisitStep: (projectId: string, step: StepId) =>
+    request<GeneratedPRD>(`/projects/${projectId}/steps/${step}/revisit`, { method: "POST" }),
+
+  confirmStep: (projectId: string, step: StepId) =>
+    request<GeneratedPRD>(`/projects/${projectId}/steps/${step}/confirm`, { method: "POST" }),
+
+  // Only the fields owned by `step` are read from `prd` server-side -- see
+  // STEP_FIELDS in backend/app/spec_builder/main.py. Runs a scope check and
+  // may cascade downstream steps to "stale"; `cascaded_to` reports which.
+  editStep: (projectId: string, step: StepId, prd: GeneratedPRD) =>
+    request<StepEditResponse>(`/projects/${projectId}/steps/${step}/edit`, {
+      method: "POST",
+      body: JSON.stringify({ prd }),
+    }),
+
+  // ---- Step 5: Architecture (interactive clarify + finalize) ----
+  architectureClarifyStart: (projectId: string) =>
+    request<StepGenerateResponse>(`/projects/${projectId}/steps/architecture/clarify/start`, { method: "POST" }),
+
+  architectureClarifyAnswer: (projectId: string, answers: Record<string, string>) =>
+    request<StepGenerateResponse>(`/projects/${projectId}/steps/architecture/clarify/answer`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
+
+  architectureFinalize: (projectId: string) =>
+    request<StepGenerateResponse>(`/projects/${projectId}/steps/architecture/finalize`, { method: "POST" }),
+
+  // ---- Completeness review (manual, non-blocking) ----
+  runCompletenessReview: (projectId: string, artifactId: string) =>
+    request<GeneratedPRD>(`/projects/${projectId}/artifacts/${artifactId}/completeness-review`, { method: "POST" }),
 
   listArtifacts: (projectId: string) =>
     request<{ artifact_ids: string[] }>(`/projects/${projectId}/artifacts`),
@@ -105,6 +138,9 @@ export const api = {
   getArtifact: (projectId: string, artifactId: string) =>
     request<GeneratedPRD>(`/projects/${projectId}/artifacts/${artifactId}`),
 
+  // Only for fields NOT owned by any confirmed step -- the server rejects
+  // (400) any change to a confirmed step's fields, directing to editStep
+  // instead. Safe for briefs/updates/diagrams/stakeholders-adjacent saves.
   updateArtifact: (projectId: string, artifactId: string, prd: GeneratedPRD, reason: "manual save" | "autosave" = "manual save") =>
     request<{ status: string }>(
       `/projects/${projectId}/artifacts/${artifactId}?reason=${encodeURIComponent(reason)}`,
@@ -129,16 +165,6 @@ export const api = {
     request<GeneratedPRD>(`/projects/${projectId}/artifacts/${artifactId}/diagrams/${diagramType}/png`, {
       method: "PUT",
       body: JSON.stringify({ png_base64: pngBase64 }),
-    }),
-
-  generateArchitectureDecisions: (projectId: string, artifactId: string) =>
-    request<GeneratedPRD>(`/projects/${projectId}/artifacts/${artifactId}/architecture-decisions`, {
-      method: "POST",
-    }),
-
-  generateEpics: (projectId: string, artifactId: string) =>
-    request<GeneratedPRD>(`/projects/${projectId}/artifacts/${artifactId}/epics`, {
-      method: "POST",
     }),
 
   getJiraStatus: () => request<JiraStatus>("/jira/status"),

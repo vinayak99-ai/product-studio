@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
 from app.llm_client import generate_structured_sync
 from .persistence import GlossaryTerm
+from .pipeline_agents import (
+    CompletenessIssue,
+    CompletenessReview,
+    PipelineState,
+    ScopeCheckVerdict,
+    StepId,
+    new_pipeline_state,
+)
+
+if TYPE_CHECKING:
+    from .diffing import DiffEntry
 
 # ---------- Stage 1: Extraction ----------
 
@@ -180,9 +192,26 @@ class KeyEntity(BaseModel):
         description="What it represents and key attributes, no implementation detail"
     )
 
-class SuccessCriterion(BaseModel):
-    id: str = Field(description="e.g. 'SC-001', sequential")
-    text: str = Field(description="Measurable, technology-agnostic outcome")
+class AcceptanceTest(BaseModel):
+    id: str = Field(description="e.g. 'AT-001', sequential")
+    fr_id: str = Field(description="The FunctionalRequirement.id this test verifies, e.g. 'FR-001'")
+    title: str
+    given: str
+    when: str
+    then: str
+
+class Persona(BaseModel):
+    id: str = Field(description="e.g. 'PER-1', sequential")
+    name: str = Field(description="Short role-based name, e.g. 'Returning Shopper'")
+    description: str = Field(description="Who they are, their context and goals")
+    pain_points: list[str] = Field(default_factory=list)
+
+class UseCase(BaseModel):
+    id: str = Field(description="e.g. 'UC-1', sequential")
+    title: str
+    actor: str = Field(description="Which persona (by name) performs this use case")
+    goal: str
+    trigger: str = Field(description="What starts this use case")
 
 class Diagram(BaseModel):
     diagram_type: Literal["journey", "sequence"]
@@ -276,14 +305,30 @@ class ComposedUpdate(BaseModel):
     decisions_needed: list[str] = Field(default_factory=list)
 
 class GeneratedPRD(BaseModel):
+    # No default: the one field always known up front (from the project
+    # name) when the artifact is first created, before Overview even runs.
     title: str
-    user_stories: list[UserStory]
+    # ---- Step 1: Overview ----
+    problem_statement: str = ""
+    goals: list[str] = Field(default_factory=list)
+    target_users: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    personas: list[Persona] = Field(default_factory=list)
+    use_cases: list[UseCase] = Field(default_factory=list)
+    # ---- Step 2: User Stories + Edge Cases ----
+    # Defaulted to empty (not required) -- the pipeline creates one
+    # GeneratedPRD per project incrementally, step by step, so most of these
+    # lists genuinely don't exist yet for a fresh project.
+    user_stories: list[UserStory] = Field(default_factory=list)
     edge_cases: list[str] = Field(default_factory=list)
-    functional_requirements: list[FunctionalRequirement]
+    # ---- Step 3: Functional Requirements ----
+    functional_requirements: list[FunctionalRequirement] = Field(default_factory=list)
     key_entities: list[KeyEntity] = Field(default_factory=list)
-    success_criteria: list[SuccessCriterion]
     assumptions: list[str] = Field(default_factory=list)
+    # ---- Step 4: Test Cases (per-FR acceptance tests) ----
+    test_cases: list[AcceptanceTest] = Field(default_factory=list)
     diagrams: list[Diagram] = Field(default_factory=list)
+    # ---- Step 5: Architecture ----
     architecture_decisions: list[ArchitectureDecision] = Field(default_factory=list)
     technical_context: list[AnsweredClarification] = Field(
         default_factory=list,
@@ -294,54 +339,188 @@ class GeneratedPRD(BaseModel):
             "generate flow and is available when architecture is regenerated."
         ),
     )
+    architecture_clarify_history: list[AnsweredClarification] = Field(
+        default_factory=list,
+        description=(
+            "Answered rounds from the interactive architecture clarify Q&A "
+            "(run_architecture_clarify) -- persisted alongside technical_context "
+            "so both are available whenever architecture is revisited."
+        ),
+    )
+    # ---- Step 6: Epics ----
     epics: list[Epic] = Field(default_factory=list)
     briefs: list[StakeholderBrief] = Field(default_factory=list)
     updates: list[ComposedUpdate] = Field(default_factory=list)
+    # ---- Pipeline metadata ----
+    pipeline: PipelineState = Field(default_factory=new_pipeline_state)
+    completeness_review: CompletenessReview | None = None
 
-GENERATION_SYSTEM_PROMPT = (
-    "You are a senior PM writing a spec, following GitHub Spec Kit's spec.md "
-    "structure. Given extracted requirements and any clarifying Q&A:\n\n"
-    "- Write prioritized user stories (P1 = most critical) that are each "
-    "independently testable/shippable/demoable on their own. Give each a "
-    "short title, a plain-language description, a 'why this priority' "
-    "justification, an 'independent test' explaining how it can be verified "
-    "standalone, and Given/When/Then acceptance scenarios.\n"
-    "- List edge cases worth calling out.\n"
-    "- Write functional requirements as discrete, testable 'System MUST ...' "
-    "statements with sequential ids FR-001, FR-002, ... covering both "
-    "user-facing capabilities (kind='functional') and quality attributes -- "
-    "performance, security, scalability, reliability, availability, "
-    "compliance -- implied by the spec (kind='non_functional'). Classify "
-    "each with `kind`; don't invent non-functional requirements the spec "
-    "doesn't actually imply.\n"
-    "- List key entities (name + description, no implementation detail) only "
-    "if the feature involves data; leave empty otherwise.\n"
-    "- Write measurable, technology-agnostic success criteria with sequential "
-    "ids SC-001, SC-002, ...\n"
-    "- List assumptions made while drafting.\n\n"
+# ---------- Step 1: Overview ----------
+# Refines the raw extraction + clarification answers into the spec's
+# problem/goals/target_users/open_questions, and adds personas + use cases.
+# This is the first pipeline step; every downstream step consumes its
+# confirmed output rather than the raw notes directly.
+
+class OverviewResult(BaseModel):
+    problem_statement: str
+    goals: list[str]
+    target_users: list[str]
+    open_questions: list[str] = Field(default_factory=list)
+    personas: list[Persona] = Field(default_factory=list)
+    use_cases: list[UseCase] = Field(default_factory=list)
+
+OVERVIEW_SYSTEM_PROMPT = (
+    "You are a senior PM writing the Overview section of a spec, following "
+    "GitHub Spec Kit's spec.md structure. Given extracted requirements and "
+    "any clarifying Q&A:\n\n"
+    "- Restate the problem statement, goals, and target users clearly and "
+    "specifically -- refine the extracted draft, don't just echo it "
+    "verbatim, and fold in anything the clarification answers settled.\n"
+    "- Carry forward any open questions not resolved by the clarification "
+    "answers.\n"
+    "- Draft personas: the distinct user roles/segments implied by the "
+    "target users and clarification answers, each with a short role-based "
+    "name, a description of who they are and what they need, and their "
+    "pain points.\n"
+    "- Draft use cases: the concrete goal-directed interactions each "
+    "persona has with the feature -- title, which persona is the actor, "
+    "their goal, and what triggers the use case.\n\n"
     "Treat the clarification answers as authoritative -- do not contradict "
-    "them. Do not invent requirements not implied by the input."
+    "them. Do not invent personas or use cases not implied by the input."
 )
 
-def run_generation(
+def run_overview(
     extracted: ExtractedRequirements,
     history: list[AnsweredClarification] | None = None,
-) -> GeneratedPRD:
+) -> OverviewResult:
     history = history or []
-
-    if history:
-        clarifications_block = "\n".join(f"- {h.question.question} -> {h.answer}" for h in history)
-    else:
-        clarifications_block = "(none)"
+    clarifications_block = (
+        "\n".join(f"- {h.question.question} -> {h.answer}" for h in history)
+        if history else "(none)"
+    )
 
     prompt = f"""
     Problem: {extracted.problem_statement}
     Goals: {extracted.goals}
     Target users: {extracted.target_users}
+    Open questions: {extracted.open_questions}
     Clarifications:
     {clarifications_block}
     """
-    return generate_structured_sync(GENERATION_SYSTEM_PROMPT, prompt, GeneratedPRD)
+    return generate_structured_sync(OVERVIEW_SYSTEM_PROMPT, prompt, OverviewResult)
+
+# ---------- Step 2: User Stories + Edge Cases ----------
+
+class StoriesResult(BaseModel):
+    user_stories: list[UserStory]
+    edge_cases: list[str] = Field(default_factory=list)
+
+STORIES_SYSTEM_PROMPT = (
+    "You write prioritized user stories from a confirmed spec Overview "
+    "(problem, goals, target users, personas, use cases), following GitHub "
+    "Spec Kit's spec.md structure.\n\n"
+    "- Write prioritized user stories (P1 = most critical) that are each "
+    "independently testable/shippable/demoable on their own. Give each a "
+    "short title, a plain-language description, a 'why this priority' "
+    "justification, an 'independent test' explaining how it can be verified "
+    "standalone, and Given/When/Then acceptance scenarios. Ground each "
+    "story in the given personas and use cases -- every use case should be "
+    "reflected in at least one story.\n"
+    "- List edge cases worth calling out -- unusual inputs, failure modes, "
+    "boundary conditions implied by the use cases.\n\n"
+    "Do not invent stories or edge cases not implied by the Overview."
+)
+
+def run_stories(overview: OverviewResult) -> StoriesResult:
+    personas_block = "\n".join(f"- {p.name}: {p.description}" for p in overview.personas) or "(none)"
+    use_cases_block = "\n".join(
+        f"- {u.title} (actor: {u.actor}): {u.goal}" for u in overview.use_cases
+    ) or "(none)"
+
+    prompt = f"""
+    Problem: {overview.problem_statement}
+    Goals: {overview.goals}
+    Target users: {overview.target_users}
+
+    Personas:
+    {personas_block}
+
+    Use cases:
+    {use_cases_block}
+    """
+    return generate_structured_sync(STORIES_SYSTEM_PROMPT, prompt, StoriesResult)
+
+# ---------- Step 3: Functional Requirements ----------
+
+class RequirementsResult(BaseModel):
+    functional_requirements: list[FunctionalRequirement]
+    key_entities: list[KeyEntity] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+REQUIREMENTS_SYSTEM_PROMPT = (
+    "You write functional requirements from a confirmed spec Overview and "
+    "User Stories, following GitHub Spec Kit's spec.md structure.\n\n"
+    "- Write functional requirements as discrete, testable 'System MUST "
+    "...' statements with sequential ids FR-001, FR-002, ... covering both "
+    "user-facing capabilities (kind='functional') and quality attributes -- "
+    "performance, security, scalability, reliability, availability, "
+    "compliance -- implied by the stories (kind='non_functional'). Classify "
+    "each with `kind`; don't invent non-functional requirements the input "
+    "doesn't actually imply. Every user story should be covered by at "
+    "least one functional requirement.\n"
+    "- List key entities (name + description, no implementation detail) "
+    "only if the feature involves data; leave empty otherwise.\n"
+    "- List assumptions made while drafting.\n\n"
+    "Do not invent requirements not implied by the Overview or User Stories."
+)
+
+def run_requirements(overview: OverviewResult, stories: StoriesResult) -> RequirementsResult:
+    stories_block = "\n".join(
+        f"- [{s.priority}] {s.title}: {s.description}" for s in stories.user_stories
+    ) or "(none)"
+
+    prompt = f"""
+    Problem: {overview.problem_statement}
+    Goals: {overview.goals}
+
+    User stories:
+    {stories_block}
+
+    Edge cases: {stories.edge_cases or '(none)'}
+    """
+    return generate_structured_sync(REQUIREMENTS_SYSTEM_PROMPT, prompt, RequirementsResult)
+
+# ---------- Step 4: Test Cases (per-FR acceptance tests) ----------
+# Test cases ARE the FR acceptance tests -- there is no separate
+# freestanding "success criteria" concept. Every functional requirement
+# gets at least one Given/When/Then acceptance test tied to it by fr_id.
+
+class TestCasesResult(BaseModel):
+    test_cases: list[AcceptanceTest]
+
+TEST_CASES_SYSTEM_PROMPT = (
+    "You write acceptance tests for a confirmed spec's functional "
+    "requirements. For EVERY functional requirement given below, write at "
+    "least one acceptance test (more if the requirement has distinct "
+    "success and failure paths worth covering separately). Each test needs "
+    "a sequential id ('AT-001', 'AT-002', ...), the `fr_id` of the exact "
+    "functional requirement it verifies (copy the FR id verbatim), a short "
+    "title, and a Given/When/Then scenario that is concrete and "
+    "measurable -- not a restatement of the requirement text.\n\n"
+    "Do not write a test for a requirement that isn't in the input, and do "
+    "not skip any requirement."
+)
+
+def run_test_cases(requirements: RequirementsResult) -> TestCasesResult:
+    fr_block = "\n".join(
+        f"- {fr.id} [{fr.kind}]: {fr.text}" for fr in requirements.functional_requirements
+    ) or "(none)"
+
+    prompt = f"""
+    Functional requirements (write at least one test per requirement):
+    {fr_block}
+    """
+    return generate_structured_sync(TEST_CASES_SYSTEM_PROMPT, prompt, TestCasesResult)
 
 # ---------- Stage 4: Diagram ----------
 # Turns the drafted spec into a Mermaid diagram of the END USER'S experience of
@@ -450,7 +629,9 @@ ARCHITECTURE_SYSTEM_PROMPT = (
         "team should review and accept or edit them.\n\n"
         "If any decisions are listed below as already accepted by the team, treat "
         "them as settled: build on and stay consistent with them rather than "
-        "silently re-deciding or contradicting them. If the project glossary "
+        "silently re-deciding or contradicting them. If architecture "
+        "clarification answers are provided, treat them as authoritative and "
+        "build decisions consistent with them. If the project glossary "
         "defines terms, use them consistently instead of introducing new names "
         "for the same concepts.\n\n"
         "Propose 3-6 decisions covering the most consequential technical choices "
@@ -462,16 +643,18 @@ ARCHITECTURE_SYSTEM_PROMPT = (
 def run_architecture(
     prd: GeneratedPRD,
     technical_context: list[AnsweredClarification] | None = None,
+    architecture_clarify_history: list[AnsweredClarification] | None = None,
     glossary: list[GlossaryTerm] | None = None,
 ) -> list[ArchitectureDecision]:
     stories_block, fr_block, entities_block = _prd_context_blocks(prd)
     technical_context = technical_context or []
-    if technical_context:
-        tech_context_block = "\n".join(
-            f"- {h.question.question} -> {h.answer}" for h in technical_context
-        )
-    else:
-        tech_context_block = "(none provided)"
+    architecture_clarify_history = architecture_clarify_history or []
+    tech_context_block = "\n".join(
+        f"- {h.question.question} -> {h.answer}" for h in technical_context
+    ) or "(none provided)"
+    arch_clarify_block = "\n".join(
+        f"- {h.question.question} -> {h.answer}" for h in architecture_clarify_history
+    ) or "(none provided)"
     accepted_block = "\n".join(
         f"- {a.id} {a.title}: {a.decision}"
         for a in prd.architecture_decisions if a.status == "accepted"
@@ -492,6 +675,9 @@ def run_architecture(
     Technical context:
     {tech_context_block}
 
+    Architecture clarification answers:
+    {arch_clarify_block}
+
     Already accepted by the team (do not silently contradict):
     {accepted_block}
 
@@ -500,6 +686,72 @@ def run_architecture(
     """
     result = generate_structured_sync(ARCHITECTURE_SYSTEM_PROMPT, prompt, ArchitectureDecisionSet)
     return result.decisions
+
+# ---------- Architecture Clarify Agent ----------
+# Same round-based Q&A pattern as the Clarify Agent (Stage 2), scoped to
+# architecture decisions specifically -- makes the Architecture step
+# interactive (Q&A rounds with options) instead of the old single-shot
+# proposal, mirroring the pipeline's existing Clarify UX.
+
+ARCHITECTURE_CLARIFY_SYSTEM_PROMPT = (
+        "You are conducting a short, conversational clarification round with a "
+        "PM/engineer about ARCHITECTURE decisions for an already-drafted product "
+        "spec, before those decisions get finalized. Be conversational -- ask "
+        "the most consequential questions first, do not dump every possible "
+        "question at once.\n\n"
+        "Evaluate coverage across: data storage choices, integration points "
+        "with existing systems, API/interface boundaries, synchronous vs "
+        "asynchronous processing, hosting/deployment target, CI/CD and "
+        "environment provisioning, and any notable non-functional tradeoffs "
+        "implied by the functional requirements (performance, security, "
+        "scalability, reliability, compliance). Ground every question in the "
+        "spec's actual functional requirements and key entities -- do not ask "
+        "generic architecture trivia unrelated to what this spec needs.\n\n"
+        f"Return at most {ROUND_SIZE} clarifying questions for THIS round, "
+        "prioritized by how much the answer would change the resulting "
+        "architecture decisions. Prefer multiple-choice questions with 2-5 "
+        "mutually exclusive options and a recommended default; use a "
+        "short-answer question only when options don't make sense, and always "
+        "suggest a likely answer.\n\n"
+        "You may be called again after the PM answers this round's questions, "
+        "with their answers included as prior context. Do not repeat anything "
+        "already answered -- only ask a follow-up if an answer surfaced a "
+        "genuinely new, high-impact gap.\n\n"
+        "If the spec and any already-provided technical context are already "
+        "clear enough to propose solid architecture decisions, return an empty "
+        "list of questions."
+)
+
+def run_architecture_clarify(
+    prd: GeneratedPRD,
+    history: list[AnsweredClarification] | None = None,
+) -> ClarifyResult:
+    history = history or []
+    _, fr_block, entities_block = _prd_context_blocks(prd)
+    history_block = (
+        "\n".join(f"- {h.question.question} -> {h.answer}" for h in history)
+        if history else "(none yet -- this is the first round)"
+    )
+    tech_context_block = "\n".join(
+        f"- {h.question.question} -> {h.answer}" for h in prd.technical_context
+    ) or "(none)"
+
+    prompt = f"""
+    Spec title: {prd.title}
+
+    Functional requirements:
+    {fr_block}
+
+    Key entities:
+    {entities_block}
+
+    Already-known technical context:
+    {tech_context_block}
+
+    Already answered in this clarification round:
+    {history_block}
+    """
+    return generate_structured_sync(ARCHITECTURE_CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
 
 # ---------- Stage 6: Epics ----------
 # Groups the spec's EXISTING user stories into Jira-style epics ("functional"
@@ -558,12 +810,13 @@ EPIC_SYSTEM_PROMPT = (
         "create this epic when the architecture decisions actually warrant it.\n\n"
         "Also score each epic's business_impact as 'high', 'medium', or 'low', "
         "weighing: the priority (P1/P2/P3) and why_this_priority of the "
-        "functional stories it contains, and which success criteria its stories "
-        "actually serve -- an epic built mostly of P1 stories addressing "
-        "high-priority success criteria is high impact; one of P3 stories with "
-        "no clear success-criteria link is low. Write business_impact_rationale "
-        "citing that specific evidence (e.g. 'Contains 2 P1 stories addressing "
-        "the primary drop-off point; directly moves SC-001'). Score only from "
+        "functional stories it contains, and which functional requirements' "
+        "acceptance tests its stories actually serve -- an epic built mostly of "
+        "P1 stories addressing well-tested, high-priority requirements is high "
+        "impact; one of P3 stories with no clear requirement link is low. Write "
+        "business_impact_rationale citing that specific evidence (e.g. "
+        "'Contains 2 P1 stories addressing the primary drop-off point; directly "
+        "satisfies FR-001, verified by AT-001'). Score only from "
         "what's actually in the spec -- never invent market size, revenue, or "
         "competitive reasoning the input doesn't give you. An "
         "infrastructure/DevOps-only epic with no functional stories is usually "
@@ -580,7 +833,9 @@ def run_epics(prd: GeneratedPRD) -> list[Epic]:
     adr_block = "\n".join(
         f"- {a.id} {a.title}: {a.decision}" for a in prd.architecture_decisions
     ) or "(none)"
-    sc_block = "\n".join(f"- {sc.id}: {sc.text}" for sc in prd.success_criteria) or "(none)"
+    tc_block = "\n".join(
+        f"- {tc.id} (verifies {tc.fr_id}): {tc.title}" for tc in prd.test_cases
+    ) or "(none)"
 
     prompt = f"""
     Spec title: {prd.title}
@@ -597,8 +852,8 @@ def run_epics(prd: GeneratedPRD) -> list[Epic]:
     Architecture decisions:
     {adr_block}
 
-    Success criteria (cite these in business_impact_rationale when relevant):
-    {sc_block}
+    Test cases (cite these in business_impact_rationale when relevant):
+    {tc_block}
     """
     result = generate_structured_sync(EPIC_SYSTEM_PROMPT, prompt, EpicDraftSet)
 
@@ -907,7 +1162,7 @@ def run_brief(
     Architecture decisions:
     {adr_block}
 
-    Success criteria: {[f"{sc.id}: {sc.text}" for sc in prd.success_criteria] or '(none)'}
+    Test cases: {[f"{tc.id} (verifies {tc.fr_id}): {tc.title}" for tc in prd.test_cases] or '(none)'}
 
     Epics and delivery status:
     {_epics_status_block(prd)}
@@ -991,9 +1246,138 @@ def run_update_composer(
     Functional requirements:
     {fr_block}
     Architecture decisions: {[f"{a.id} [{a.status}] {a.title}" for a in prd.architecture_decisions] or '(none)'}
-    Success criteria: {[f"{sc.id}: {sc.text}" for sc in prd.success_criteria] or '(none)'}
+    Test cases: {[f"{tc.id} (verifies {tc.fr_id}): {tc.title}" for tc in prd.test_cases] or '(none)'}
 
     Project glossary (use these terms consistently):
     {_glossary_block(glossary)}
     """
     return generate_structured_sync(UPDATE_COMPOSER_SYSTEM_PROMPT, prompt, StakeholderUpdateDraft)
+
+# ---------- Scope Check Agent ----------
+# Triggered only via an explicit "Edit this step" action on an already-
+# confirmed pipeline step. Judges whether the edit is a genuine scope
+# change (should cascade downstream steps to "stale" for revisit) or
+# merely cosmetic (wording/typo-level, safe to leave downstream untouched).
+# Fed both the structured diff AND a summary of current downstream content,
+# since the diff alone can't say whether a changed item actually matters to
+# what's already built on top of it.
+
+SCOPE_CHECK_SYSTEM_PROMPT = (
+        "You judge whether an edit to a confirmed pipeline step is a genuine "
+        "scope change or a merely cosmetic edit (wording/typo/formatting, no "
+        "change in meaning).\n\n"
+        "You are given: which step was edited, a structured diff of what "
+        "changed, and a summary of the downstream content already built on "
+        "top of this step. Classify 'scope_change' only if the edit would "
+        "actually invalidate or contradict something in that downstream "
+        "content -- a new requirement, a removed capability, a changed actor, "
+        "a changed data shape, a changed priority that reorders what's "
+        "critical. Classify 'cosmetic' if the meaning is unchanged (rewording, "
+        "typo fixes, formatting, reordering with no semantic change).\n\n"
+        "If scope_change, list which of the given downstream step ids are "
+        "actually affected -- do not list a step just because it comes after "
+        "the edited one; only list it if the diff genuinely conflicts with or "
+        "invalidates something specific in that step's summary. Write a short, "
+        "concrete rationale citing the specific diff item and the downstream "
+        "content it conflicts with."
+)
+
+def run_scope_check(
+    step: StepId,
+    diff_entries: list["DiffEntry"],
+    downstream_summary: str,
+) -> ScopeCheckVerdict:
+    diff_block = "\n".join(
+        f"- [{e.section}] {e.change}: {e.item}" + (f" -- {e.detail}" if e.detail else "")
+        for e in diff_entries
+    ) or "(no changes)"
+
+    prompt = f"""
+    Step edited: {step}
+
+    Structured diff of the edit:
+    {diff_block}
+
+    Downstream content already built on top of this step:
+    {downstream_summary}
+    """
+    return generate_structured_sync(SCOPE_CHECK_SYSTEM_PROMPT, prompt, ScopeCheckVerdict)
+
+# ---------- Completeness Review Agent ----------
+# Manually triggered (never blocks anything) -- flags gaps across the whole
+# drafted spec once every step is confirmed. Modeled on the Enrichment
+# Agent's "flag gaps, never invent" style.
+
+class CompletenessDraft(BaseModel):
+    issues: list[CompletenessIssue] = Field(default_factory=list)
+
+COMPLETENESS_REVIEW_SYSTEM_PROMPT = (
+        "You review a fully-drafted product spec for completeness and internal "
+        "consistency, across its overview, user stories, functional "
+        "requirements, test cases, architecture decisions, and epics.\n\n"
+        "Flag genuine gaps: a functional requirement with no test case, a user "
+        "story with no acceptance scenario, a persona or use case never "
+        "reflected in any story, an edge case with no requirement addressing "
+        "it, an architecture decision that contradicts a functional "
+        "requirement, an epic/story that doesn't trace back to any "
+        "requirement. For each issue, give a short id, a severity ('high' for "
+        "a real gap that blocks confidence in the spec, 'medium' for a "
+        "worth-fixing inconsistency, 'low' for a minor polish item), the area "
+        "it's in, a concrete description, and the related item ids (e.g. "
+        "FR-003, UC-2) it concerns.\n\n"
+        "Only flag genuine issues -- do not invent nitpicks to fill a quota. "
+        "If the spec is solid, return an empty list."
+)
+
+def run_completeness_review(prd: GeneratedPRD, version: int) -> CompletenessReview:
+    stories_block, fr_block, entities_block = _prd_context_blocks(prd)
+    personas_block = "\n".join(f"- {p.id} {p.name}: {p.description}" for p in prd.personas) or "(none)"
+    use_cases_block = "\n".join(
+        f"- {u.id} {u.title} (actor: {u.actor}): {u.goal}" for u in prd.use_cases
+    ) or "(none)"
+    test_cases_block = "\n".join(
+        f"- {tc.id} (verifies {tc.fr_id}): Given {tc.given}, When {tc.when}, Then {tc.then}"
+        for tc in prd.test_cases
+    ) or "(none)"
+    adr_block = "\n".join(
+        f"- {a.id} [{a.status}] {a.title}: {a.decision}" for a in prd.architecture_decisions
+    ) or "(none)"
+
+    prompt = f"""
+    Spec title: {prd.title}
+    Problem: {prd.problem_statement}
+    Goals: {prd.goals}
+    Target users: {prd.target_users}
+
+    Personas:
+    {personas_block}
+
+    Use cases:
+    {use_cases_block}
+
+    User stories (with acceptance scenarios):
+    {stories_block}
+
+    Edge cases: {prd.edge_cases or '(none)'}
+
+    Functional requirements:
+    {fr_block}
+
+    Key entities:
+    {entities_block}
+
+    Test cases:
+    {test_cases_block}
+
+    Architecture decisions:
+    {adr_block}
+
+    Epics:
+    {_epics_status_block(prd)}
+    """
+    draft = generate_structured_sync(COMPLETENESS_REVIEW_SYSTEM_PROMPT, prompt, CompletenessDraft)
+    return CompletenessReview(
+        issues=draft.issues,
+        reviewed_at=datetime.now(timezone.utc).isoformat(),
+        reviewed_version=version,
+    )

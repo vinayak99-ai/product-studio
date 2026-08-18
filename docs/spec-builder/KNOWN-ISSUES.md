@@ -18,7 +18,7 @@ some. Every issue below is tagged accordingly:
   network-exposed, or runs unattended for long stretches. Safe to defer.
 
 ### 🔴 POC-relevant, at a glance
-[1.1](#11-file-writes-are-not-atomic-) atomic writes · [1.2](#12-concurrent-saves-are-last-writer-wins-silently-) concurrent-save clobbering · [2.2](#22-raw-notes-are-write-once-invisible-after-generation-) raw notes write-once · [2.3](#23-regenerate-section-endpoint-has-no-ui-long-standing-) regenerate-section has no UI · [3.1](#31-no-tests-are-committed--the-repos-biggest-gap-) no committed tests
+[1.1](#11-file-writes-are-not-atomic-) atomic writes · [1.2](#12-concurrent-saves-are-last-writer-wins-silently-) concurrent-save clobbering · [2.2](#22-raw-notes-are-write-once-invisible-after-generation-) raw notes write-once · [3.1](#31-no-tests-are-committed--the-repos-biggest-gap-) no committed tests
 
 Everything else on this page is real but deferrable — see the tag on each
 item.
@@ -86,11 +86,13 @@ can't refine their input and retry; their only lever is manual editing.
 This also blocks the glossary/memory from ever influencing
 extraction/clarification (noted as future work in FUTURE-VISION).
 
-### 2.3 `regenerate-section` endpoint has no UI (long-standing) 🔴
-`POST /.../regenerate-section` exists in the backend with a free-text
-`context` field — arguably the most useful escape hatch in the product
-("redo the stories, but assume mobile-first") — and the frontend never
-calls it.
+### 2.3 `regenerate-section` endpoint has no UI (RESOLVED — endpoint deleted)
+`POST /.../regenerate-section` was confirmed-dead code (no UI caller, no
+field whitelist, didn't use real artifact content) and was removed as part
+of the strict step-pipeline rebuild. Its escape-hatch use case is now
+covered properly: `POST /steps/{step}/edit` on a confirmed step, which runs
+a scope check and cascades affected downstream steps to "stale" instead of
+silently regenerating an arbitrary section.
 
 ### 2.4 Project name and spec title drift apart ⚪
 Renaming a project doesn't touch the spec title; editing the spec title

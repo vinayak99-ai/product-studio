@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { BusinessImpact, Epic, EpicStory, JiraPushResult, JiraStatus } from "@/features/spec-builder/lib/types"
+import type { BusinessImpact, Epic, EpicStory, GeneratedPRD, JiraPushResult, JiraStatus } from "@/features/spec-builder/lib/types"
 import { api } from "@/features/spec-builder/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,10 @@ interface EpicsSectionProps {
   artifactId: string
   epics: Epic[]
   onChange: (epics: Epic[]) => void
+  // The pipeline Generate/Revisit calls return the FULL prd, including
+  // updated `pipeline` step status -- syncing only `epics` would leave the
+  // PipelineStepper's epics chip stuck on a stale status.
+  onGenerated: (prd: GeneratedPRD) => void
 }
 
 function emptyTechnicalStory(epic: Epic): EpicStory {
@@ -141,7 +145,7 @@ function ImpactBadge({ impact, onClick }: { impact: BusinessImpact; onClick: () 
   )
 }
 
-export function EpicsSection({ projectId, artifactId, epics, onChange }: EpicsSectionProps) {
+export function EpicsSection({ projectId, artifactId, epics, onChange, onGenerated }: EpicsSectionProps) {
   const toast = useToast()
   // Latest epics/onChange, so a toast's Undo (fired seconds later) restores
   // into the list as it is then, not as it was at deletion time.
@@ -173,8 +177,8 @@ export function EpicsSection({ projectId, artifactId, epics, onChange }: EpicsSe
     setGenerating(true)
     setError(null)
     try {
-      const updated = await api.generateEpics(projectId, artifactId)
-      onChange(updated.epics)
+      const updated = await api.generateStep(projectId, "epics")
+      onGenerated(updated)
     } catch (err) {
       setError(`${err}`)
     } finally {

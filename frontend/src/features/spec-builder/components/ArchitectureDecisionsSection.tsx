@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import type { AnsweredClarification, ArchitectureDecision } from "@/features/spec-builder/lib/types"
+import type { AnsweredClarification, ArchitectureDecision, ClarifyQuestion, GeneratedPRD } from "@/features/spec-builder/lib/types"
 import { api } from "@/features/spec-builder/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -17,28 +17,85 @@ interface ArchitectureDecisionsSectionProps {
   artifactId: string
   decisions: ArchitectureDecision[]
   technicalContext: AnsweredClarification[]
+  // Manual inline edits (title/context/decision/consequences fields,
+  // remove) only ever touch the decisions array itself.
   onChange: (decisions: ArchitectureDecision[]) => void
+  // The clarify/finalize flow returns the FULL prd, including the updated
+  // `pipeline` step status (drafted) -- syncing only `decisions` would
+  // leave the PipelineStepper showing "not_started" forever, since it's
+  // the one step with no PipelineStepper-driven generate button of its
+  // own (this section's clarify Q&A is the only path to drafting it).
+  onGenerated: (prd: GeneratedPRD) => void
 }
 
 export function ArchitectureDecisionsSection({
   projectId,
-  artifactId,
+  artifactId: _artifactId,
   decisions,
   technicalContext,
   onChange,
+  onGenerated,
 }: ArchitectureDecisionsSectionProps) {
   const toast = useToast()
   const latest = useRef({ decisions, onChange })
   latest.current = { decisions, onChange }
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Architecture is the one interactive pipeline step -- clarify/start may
+  // come back with a round of questions (options + a recommended default,
+  // same UX as the up-front Clarify step) before decisions are finalized.
+  const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[] | null>(null)
+  const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string>>({})
 
-  async function handleRegenerate() {
+  function setAnswer(id: string, value: string) {
+    setClarifyAnswers((prev) => ({ ...prev, [id]: value }))
+  }
+
+  async function handleStart() {
     setGenerating(true)
     setError(null)
     try {
-      const updated = await api.generateArchitectureDecisions(projectId, artifactId)
-      onChange(updated.architecture_decisions)
+      const res = await api.architectureClarifyStart(projectId)
+      if (res.status === "needs_clarification") {
+        setClarifyQuestions(res.questions)
+        setClarifyAnswers(Object.fromEntries(res.questions.map((q) => [q.id, ""])))
+      } else {
+        setClarifyQuestions(null)
+        onGenerated(res.prd!)
+      }
+    } catch (err) {
+      setError(`${err}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function handleAnswerRound() {
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await api.architectureClarifyAnswer(projectId, clarifyAnswers)
+      if (res.status === "needs_clarification") {
+        setClarifyQuestions(res.questions)
+        setClarifyAnswers(Object.fromEntries(res.questions.map((q) => [q.id, ""])))
+      } else {
+        setClarifyQuestions(null)
+        onGenerated(res.prd!)
+      }
+    } catch (err) {
+      setError(`${err}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function handleSkipToFinalize() {
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await api.architectureFinalize(projectId)
+      setClarifyQuestions(null)
+      onGenerated(res.prd!)
     } catch (err) {
       setError(`${err}`)
     } finally {
@@ -106,12 +163,66 @@ export function ArchitectureDecisionsSection({
       icon={Blocks}
       count={decisions.length}
       actions={
-        <Button type="button" variant="outline" size="sm" disabled={generating} onClick={handleRegenerate}>
-          {generating ? "Generating…" : decisions.length > 0 ? "Regenerate" : "Generate"}
+        <Button type="button" variant="outline" size="sm" disabled={generating || !!clarifyQuestions} onClick={handleStart}>
+          {generating ? "Working…" : decisions.length > 0 ? "Regenerate" : "Ask questions & generate"}
         </Button>
       }
     >
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {clarifyQuestions && clarifyQuestions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">A few architecture questions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {clarifyQuestions.map((q, i) => (
+              <div key={q.id} className="flex flex-col gap-2">
+                <p className="text-sm font-medium">
+                  {i + 1}. {q.question}
+                </p>
+                {q.options.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {q.options.map((option) => {
+                      const selected = clarifyAnswers[q.id] === option
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setAnswer(q.id, option)}
+                          className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                            selected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "hover:bg-accent hover:text-accent-foreground"
+                          }`}
+                        >
+                          {option}
+                          {option === q.recommended && <span className="ml-1.5 text-xs opacity-70">★</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <Input
+                    value={clarifyAnswers[q.id] ?? ""}
+                    placeholder={q.recommended ?? undefined}
+                    onChange={(e) => setAnswer(q.id, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={generating} onClick={handleSkipToFinalize}>
+                Skip remaining questions & finalize
+              </Button>
+              <Button type="button" size="sm" disabled={generating} onClick={handleAnswerRound}>
+                {generating ? "Working…" : "Continue"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {technicalContext.length > 0 && (
         <div className="flex flex-col gap-1.5 rounded-md border p-3">

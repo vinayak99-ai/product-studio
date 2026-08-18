@@ -64,6 +64,12 @@ class PendingClarification(NamedTuple):
     # existing spec rather than an unrelated second one.
     target_artifact_id: str | None
     reason: str
+    # Which pipeline step this clarification round belongs to (StepId, e.g.
+    # "overview" or "architecture") -- kept as plain str here, not the
+    # StepId type itself, to avoid importing pipeline_agents.py at module
+    # level (pipeline_agents imports agents, which imports this module --
+    # see load_pending_clarification for the typed deferred import).
+    step: str
 
 def _project_dir(project_id: str) -> Path:
     return DATA_ROOT / project_id
@@ -132,11 +138,23 @@ class ArtifactVersionMeta(BaseModel):
     version: int
     saved_at: str
     reason: str
+    # Step ids (StepId, kept as plain str -- see PendingClarification.step)
+    # marked "stale" as a downstream consequence of THIS version's change,
+    # per the scope-check agent's verdict. Empty for versions that didn't
+    # cascade anything (including every version saved before this field
+    # existed).
+    cascaded_to: list[str] = Field(default_factory=list)
 
 def _versions_dir(project_id: str, artifact_id: str) -> Path:
     return _project_dir(project_id) / "artifacts" / f"{artifact_id}_versions"
 
-def save_artifact(project_id: str, prd, artifact_id: str = None, reason: str = "update") -> str:
+def save_artifact(
+    project_id: str,
+    prd,
+    artifact_id: str = None,
+    reason: str = "update",
+    cascaded_to: list[str] | None = None,
+) -> str:
     artifact_id = artifact_id or f"prd_{uuid.uuid4().hex[:8]}"
     artifacts_dir = _project_dir(project_id) / "artifacts"
 
@@ -162,6 +180,7 @@ def save_artifact(project_id: str, prd, artifact_id: str = None, reason: str = "
         "version": next_version,
         "saved_at": datetime.now(timezone.utc).isoformat(),
         "reason": reason,
+        "cascaded_to": cascaded_to or [],
         "prd": new_content,
     }
     (versions_dir / f"v{next_version:04d}.json").write_text(json.dumps(snapshot, indent=2))
@@ -182,7 +201,10 @@ def list_artifact_versions(project_id: str, artifact_id: str) -> list[ArtifactVe
     for f in sorted(versions_dir.glob("v*.json")):
         data = json.loads(f.read_text())
         metas.append(ArtifactVersionMeta(
-            version=data["version"], saved_at=data["saved_at"], reason=data["reason"]
+            version=data["version"],
+            saved_at=data["saved_at"],
+            reason=data["reason"],
+            cascaded_to=data.get("cascaded_to", []),
         ))
     return metas
 
@@ -254,6 +276,7 @@ def mark_generated(project_id: str) -> None:
 def save_pending_clarification(
     project_id: str, raw_notes: str, extracted, questions, history, round_num: int,
     target_artifact_id: str | None = None, reason: str = "generated",
+    step: str = "overview",
 ) -> None:
     data = {
         "raw_notes": raw_notes,
@@ -263,6 +286,7 @@ def save_pending_clarification(
         "round": round_num,
         "target_artifact_id": target_artifact_id,
         "reason": reason,
+        "step": step,
     }
     path = _project_dir(project_id) / "pending_clarification.json"
     path.write_text(json.dumps(data, indent=2))
@@ -285,6 +309,7 @@ def load_pending_clarification(project_id: str) -> PendingClarification | None:
         round=data.get("round", 1),
         target_artifact_id=data.get("target_artifact_id"),
         reason=data.get("reason", "generated"),
+        step=data.get("step", "overview"),
     )
 
 def clear_pending_clarification(project_id: str) -> None:

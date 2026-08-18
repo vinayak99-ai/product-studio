@@ -66,8 +66,9 @@ def diff_prds(old: GeneratedPRD, new: GeneratedPRD) -> list[DiffEntry]:
         describe=lambda x: f"[{x.kind}] {x.text}", entries=entries,
     )
     _diff_keyed(
-        "Success criteria", old.success_criteria, new.success_criteria,
-        key=lambda x: x.id, label=lambda x: x.id, describe=lambda x: x.text, entries=entries,
+        "Test cases", old.test_cases, new.test_cases,
+        key=lambda x: x.id, label=lambda x: x.id,
+        describe=lambda x: f"(verifies {x.fr_id}) {x.title}", entries=entries,
     )
     _diff_keyed(
         "Key entities", old.key_entities, new.key_entities,

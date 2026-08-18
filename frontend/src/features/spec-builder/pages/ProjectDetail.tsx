@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/features/spec-builder/lib/api"
 import type { ClarifyQuestion, GeneratedPRD, UserStory } from "@/features/spec-builder/lib/types"
+import { confirmedStepsChanged, nonStepFields } from "@/features/spec-builder/lib/pipelineFields"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { AlertDialog } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +14,8 @@ import { SourceNotesSection } from "@/features/spec-builder/components/SourceNot
 import { EditableList } from "@/features/spec-builder/components/EditableList"
 import { IdentifiedList } from "@/features/spec-builder/components/IdentifiedList"
 import { KeyEntityList } from "@/features/spec-builder/components/KeyEntityList"
+import { TestCaseList } from "@/features/spec-builder/components/TestCaseList"
+import { PipelineStepper } from "@/features/spec-builder/components/PipelineStepper"
 import { UserStoryCard } from "@/features/spec-builder/components/UserStoryCard"
 import { Section } from "@/features/spec-builder/components/Section"
 import { ExportMenu } from "@/features/spec-builder/components/ExportMenu"
@@ -31,6 +35,7 @@ import {
   Blocks,
   BookMarked,
   BookOpen,
+  CheckSquare,
   Database,
   Eye,
   FileText,
@@ -73,7 +78,7 @@ const SPEC_OUTLINE: OutlineSection[] = [
   { id: "edge-cases", label: "Edge Cases", icon: AlertTriangle },
   { id: "functional-requirements", label: "Requirements", icon: ListChecks },
   { id: "key-entities", label: "Key Entities", icon: Database },
-  { id: "success-criteria", label: "Success Criteria", icon: Target },
+  { id: "test-cases", label: "Test Cases", icon: CheckSquare },
   { id: "assumptions", label: "Assumptions", icon: HelpCircle },
   { id: "architecture", label: "Architecture", icon: Blocks },
   { id: "epics", label: "Epics", icon: Layers },
@@ -150,6 +155,7 @@ export function ProjectDetail({
           const loaded = await api.getArtifact(projectId, id)
           setArtifactId(id)
           setPrd(loaded)
+          lastSyncedPrdRef.current = loaded
           return
         }
         // No artifact yet -- check whether this project has an unanswered
@@ -179,14 +185,46 @@ export function ProjectDetail({
   const prdRef = useRef(prd)
   prdRef.current = prd
 
+  // The prd as of the last successful save/load from the server -- diffed
+  // against the current snapshot in doSave to tell which pipeline steps'
+  // fields actually changed, since a confirmed step's fields can't go
+  // through the plain PUT (the backend rejects that) and must instead go
+  // through POST /steps/{step}/edit, which runs a scope check and may
+  // cascade downstream steps to "stale".
+  const lastSyncedPrdRef = useRef<GeneratedPRD | null>(initialPrd ?? null)
+
   const doSave = useCallback(
     async (reason: "manual save" | "autosave"): Promise<boolean> => {
       const snapshot = prdRef.current
       if (!snapshot || !artifactId) return false
       setSaving(true)
       try {
-        await api.updateArtifact(projectId, artifactId, snapshot, reason)
-        if (prdRef.current === snapshot) setDirty(false)
+        let working = snapshot
+        const baseline = lastSyncedPrdRef.current
+        const touchedConfirmedSteps = baseline ? confirmedStepsChanged(baseline, working) : []
+
+        for (const step of touchedConfirmedSteps) {
+          const res = await api.editStep(projectId, step, working)
+          // Adopt the server's view of this step's owned fields + pipeline
+          // state (including any cascade), but keep the PM's not-yet-saved
+          // edits to fields editStep doesn't own (title, diagrams, briefs,
+          // updates, ...) rather than letting the server's stale copy of
+          // those win.
+          working = { ...working, ...res.prd, ...nonStepFields(working) }
+          if (res.scope_check?.classification === "scope_change" && res.cascaded_to.length > 0) {
+            toast({
+              title: `${step} edited — downstream steps need another look`,
+              description: `${res.cascaded_to.join(", ")} marked stale: ${res.scope_check.rationale}`,
+            })
+          }
+        }
+
+        await api.updateArtifact(projectId, artifactId, working, reason)
+        if (prdRef.current === snapshot) {
+          setPrd(working)
+          setDirty(false)
+        }
+        lastSyncedPrdRef.current = working
         setLastSavedAt(new Date())
         return true
       } catch (e) {
@@ -212,11 +250,21 @@ export function ProjectDetail({
     // it's preserved in this artifact's version history.
     setArtifactId(newArtifactId)
     setPrd(newPrd)
+    lastSyncedPrdRef.current = newPrd
     setDirty(false)
     setAutosavePaused(false)
     setLastSavedAt(new Date())
     refreshMetaTimestamps()
     toast({ title: "Spec regenerated", description: "Redrafted from the updated source notes." })
+  }
+
+  // The pipeline step actions (generate/confirm/revisit) already save
+  // server-side -- this just syncs local state and the diff baseline so a
+  // later inline edit isn't compared against a stale snapshot.
+  function handlePipelineChange(newPrd: GeneratedPRD) {
+    setPrd(newPrd)
+    lastSyncedPrdRef.current = newPrd
+    setLastSavedAt(new Date())
   }
 
   // Debounced autosave: 2s after the last edit. The server dedupes
@@ -474,7 +522,76 @@ export function ProjectDetail({
                   <DeliveryStatusBar epics={prd.epics} />
                 </div>
               )}
+
+              {(prd.problem_statement || prd.goals.length > 0 || prd.target_users.length > 0) && (
+                <div className="flex flex-col gap-3 border-t pt-3">
+                  <EditableBlock
+                    label="problem statement"
+                    read={
+                      <p className="text-sm leading-relaxed">
+                        {prd.problem_statement || <span className="text-muted-foreground italic">(empty)</span>}
+                      </p>
+                    }
+                  >
+                    <Label htmlFor="problem-statement">Problem statement</Label>
+                    <Textarea
+                      id="problem-statement"
+                      className="min-h-16"
+                      value={prd.problem_statement}
+                      onChange={(e) => update("problem_statement", e.target.value)}
+                    />
+                  </EditableBlock>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <EditableList
+                      id="goals"
+                      icon={Target}
+                      label="Goals"
+                      items={prd.goals}
+                      onChange={(goals) => update("goals", goals)}
+                    />
+                    <EditableList
+                      id="target-users"
+                      icon={Users}
+                      label="Target users"
+                      items={prd.target_users}
+                      onChange={(target_users) => update("target_users", target_users)}
+                    />
+                  </div>
+
+                  {prd.personas.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Personas</p>
+                      <div className="flex flex-wrap gap-2">
+                        {prd.personas.map((p) => (
+                          <Badge key={p.id} variant="outline" title={p.description} className="font-normal">
+                            {p.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {prd.use_cases.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Use cases</p>
+                      <ul className="flex flex-col gap-1">
+                        {prd.use_cases.map((u) => (
+                          <li key={u.id} className="text-sm">
+                            <span className="font-medium">{u.title}</span>{" "}
+                            <span className="text-muted-foreground">
+                              ({u.actor}) — {u.goal}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            <PipelineStepper projectId={projectId} prd={prd} onPrdChange={handlePipelineChange} />
 
             <SourceNotesSection
               projectId={projectId}
@@ -548,13 +665,9 @@ export function ProjectDetail({
               onChange={(key_entities) => update("key_entities", key_entities)}
             />
 
-            <IdentifiedList
-              id="success-criteria"
-              icon={Target}
-              label="Success criteria"
-              prefix="SC"
-              items={prd.success_criteria}
-              onChange={(success_criteria) => update("success_criteria", success_criteria)}
+            <TestCaseList
+              items={prd.test_cases}
+              onChange={(test_cases) => update("test_cases", test_cases)}
             />
 
             <EditableList
@@ -572,6 +685,7 @@ export function ProjectDetail({
                 decisions={prd.architecture_decisions}
                 technicalContext={prd.technical_context}
                 onChange={(architecture_decisions) => update("architecture_decisions", architecture_decisions)}
+                onGenerated={handlePipelineChange}
               />
             )}
 
@@ -581,6 +695,7 @@ export function ProjectDetail({
                 artifactId={artifactId}
                 epics={prd.epics}
                 onChange={(epics) => update("epics", epics)}
+                onGenerated={handlePipelineChange}
               />
             )}
 

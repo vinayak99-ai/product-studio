@@ -59,7 +59,7 @@ export function ClarifyQuestions({
         question: q,
         answer: answers[q.id] || q.recommended || "(default)",
       }))
-      const res = await api.submitClarifications(projectId, answers)
+      const res = await api.submitOverviewClarifications(projectId, answers)
       if (res.status === "needs_clarification") {
         // The Clarify Agent is conversational -- it can ask a follow-up round
         // informed by what was just answered, rather than one flat batch.

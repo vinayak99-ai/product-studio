@@ -4,8 +4,60 @@ import base64
 import csv
 import io
 
+def _test_cases_by_fr(prd):
+    """Groups test_cases by the FR they verify, in functional_requirements
+    order -- with any test case whose fr_id doesn't match a known FR (should
+    not normally happen) appended at the end so nothing silently drops."""
+    by_fr: dict[str, list] = {}
+    for tc in prd.test_cases:
+        by_fr.setdefault(tc.fr_id, []).append(tc)
+    ordered: list[tuple[str, list]] = []
+    for fr in prd.functional_requirements:
+        group = by_fr.pop(fr.id, None)
+        if group:
+            ordered.append((fr.id, group))
+    ordered.extend(by_fr.items())
+    return ordered
+
+
 def export_to_markdown(prd) -> str:
     lines = [f"# {prd.title}\n"]
+
+    has_overview = (
+        prd.problem_statement or prd.goals or prd.target_users
+        or prd.personas or prd.use_cases or prd.open_questions
+    )
+    if has_overview:
+        lines.append("## Overview")
+        if prd.problem_statement:
+            lines.append(f"{prd.problem_statement}\n")
+        if prd.goals:
+            lines.append("**Goals**:")
+            for g in prd.goals:
+                lines.append(f"- {g}")
+            lines.append("")
+        if prd.target_users:
+            lines.append("**Target users**:")
+            for u in prd.target_users:
+                lines.append(f"- {u}")
+            lines.append("")
+        if prd.personas:
+            lines.append("### Personas")
+            for p in prd.personas:
+                lines.append(f"- **{p.name}**: {p.description}")
+                for pp in p.pain_points:
+                    lines.append(f"  - Pain point: {pp}")
+            lines.append("")
+        if prd.use_cases:
+            lines.append("### Use Cases")
+            for u in prd.use_cases:
+                lines.append(f"- **{u.title}** ({u.actor}): {u.goal} -- triggered by {u.trigger}")
+            lines.append("")
+        if prd.open_questions:
+            lines.append("### Open Questions")
+            for q in prd.open_questions:
+                lines.append(f"- {q}")
+            lines.append("")
 
     lines.append("## User Scenarios & Testing")
     for story in prd.user_stories:
@@ -39,19 +91,30 @@ def export_to_markdown(prd) -> str:
             lines.append(f"- **{ke.name}**: {ke.description}")
         lines.append("")
 
-    lines.append("## Success Criteria")
-    lines.append("### Measurable Outcomes")
-    for sc in prd.success_criteria:
-        lines.append(f"- **{sc.id}**: {sc.text}")
+    lines.append("## Test Cases")
+    for fr_id, group in _test_cases_by_fr(prd):
+        lines.append(f"### {fr_id}")
+        for tc in group:
+            lines.append(f"- **{tc.id}** {tc.title}: Given {tc.given}, When {tc.when}, Then {tc.then}")
     lines.append("")
 
     lines.append("## Assumptions")
     for a in prd.assumptions:
         lines.append(f"- {a}")
 
-    if prd.architecture_decisions:
+    if prd.architecture_decisions or prd.technical_context or prd.architecture_clarify_history:
         lines.append("")
         lines.append("## Architecture Decisions")
+        if prd.technical_context:
+            lines.append("**Technical context**:")
+            for h in prd.technical_context:
+                lines.append(f"- {h.question.question} -> {h.answer}")
+            lines.append("")
+        if prd.architecture_clarify_history:
+            lines.append("**Architecture clarifications**:")
+            for h in prd.architecture_clarify_history:
+                lines.append(f"- {h.question.question} -> {h.answer}")
+            lines.append("")
         for adr in prd.architecture_decisions:
             lines.append(f"### {adr.id}: {adr.title}")
             lines.append(f"**Status**: {adr.status}\n")
@@ -86,12 +149,57 @@ def export_to_markdown(prd) -> str:
             lines.append("```")
             lines.append("")
 
+    if prd.completeness_review and prd.completeness_review.issues:
+        lines.append("")
+        lines.append("## Completeness Review")
+        for issue in prd.completeness_review.issues:
+            related = f" ({', '.join(issue.related_ids)})" if issue.related_ids else ""
+            lines.append(f"- **[{issue.severity}] {issue.area}**: {issue.description}{related}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
 def export_to_docx(prd, path: str):
     doc = Document()
     doc.add_heading(prd.title, level=0)
+
+    has_overview = (
+        prd.problem_statement or prd.goals or prd.target_users
+        or prd.personas or prd.use_cases or prd.open_questions
+    )
+    if has_overview:
+        doc.add_heading("Overview", level=1)
+        if prd.problem_statement:
+            doc.add_paragraph(prd.problem_statement)
+        if prd.goals:
+            p = doc.add_paragraph()
+            p.add_run("Goals").bold = True
+            for g in prd.goals:
+                doc.add_paragraph(g, style="List Bullet")
+        if prd.target_users:
+            p = doc.add_paragraph()
+            p.add_run("Target users").bold = True
+            for u in prd.target_users:
+                doc.add_paragraph(u, style="List Bullet")
+        if prd.personas:
+            doc.add_heading("Personas", level=2)
+            for persona in prd.personas:
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"{persona.name}: ").bold = True
+                p.add_run(persona.description)
+                for pp in persona.pain_points:
+                    doc.add_paragraph(f"Pain point: {pp}", style="List Bullet 2")
+        if prd.use_cases:
+            doc.add_heading("Use Cases", level=2)
+            for uc in prd.use_cases:
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"{uc.title} ({uc.actor}): ").bold = True
+                p.add_run(f"{uc.goal} -- triggered by {uc.trigger}")
+        if prd.open_questions:
+            doc.add_heading("Open Questions", level=2)
+            for q in prd.open_questions:
+                doc.add_paragraph(q, style="List Bullet")
 
     doc.add_heading("User Scenarios & Testing", level=1)
     for story in prd.user_stories:
@@ -128,17 +236,30 @@ def export_to_docx(prd, path: str):
         for ke in prd.key_entities:
             doc.add_paragraph(f"{ke.name}: {ke.description}", style="List Bullet")
 
-    doc.add_heading("Success Criteria", level=1)
-    doc.add_heading("Measurable Outcomes", level=2)
-    for sc in prd.success_criteria:
-        doc.add_paragraph(f"{sc.id}: {sc.text}", style="List Bullet")
+    doc.add_heading("Test Cases", level=1)
+    for fr_id, group in _test_cases_by_fr(prd):
+        doc.add_heading(fr_id, level=2)
+        for tc in group:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{tc.id} {tc.title}: ").bold = True
+            p.add_run(f"Given {tc.given}, When {tc.when}, Then {tc.then}")
 
     doc.add_heading("Assumptions", level=1)
     for a in prd.assumptions:
         doc.add_paragraph(a, style="List Bullet")
 
-    if prd.architecture_decisions:
+    if prd.architecture_decisions or prd.technical_context or prd.architecture_clarify_history:
         doc.add_heading("Architecture Decisions", level=1)
+        if prd.technical_context:
+            p = doc.add_paragraph()
+            p.add_run("Technical context").bold = True
+            for h in prd.technical_context:
+                doc.add_paragraph(f"{h.question.question} -> {h.answer}", style="List Bullet")
+        if prd.architecture_clarify_history:
+            p = doc.add_paragraph()
+            p.add_run("Architecture clarifications").bold = True
+            for h in prd.architecture_clarify_history:
+                doc.add_paragraph(f"{h.question.question} -> {h.answer}", style="List Bullet")
         for adr in prd.architecture_decisions:
             doc.add_heading(f"{adr.id}: {adr.title}", level=2)
             p = doc.add_paragraph()
@@ -199,6 +320,14 @@ def export_to_docx(prd, path: str):
                     run.font.size = Pt(9)
                     if i < len(source_lines) - 1:
                         run.add_break()
+
+    if prd.completeness_review and prd.completeness_review.issues:
+        doc.add_heading("Completeness Review", level=1)
+        for issue in prd.completeness_review.issues:
+            related = f" ({', '.join(issue.related_ids)})" if issue.related_ids else ""
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"[{issue.severity}] {issue.area}: ").bold = True
+            p.add_run(f"{issue.description}{related}")
 
     doc.save(path)
 

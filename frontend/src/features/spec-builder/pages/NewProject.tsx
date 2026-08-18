@@ -51,7 +51,7 @@ export function NewProject({ onGenerated, onNeedsClarification, onCancel }: NewP
     try {
       const project = await api.createProject(name.trim())
       setBusyProjectId(project.id)
-      const res = await api.generate(project.id, rawNotes.trim())
+      const res = await api.generateOverview(project.id, rawNotes.trim())
       if (res.status === "needs_clarification") {
         onNeedsClarification(project.id, project.name, res.questions)
       } else {
@@ -150,7 +150,7 @@ export function NewProject({ onGenerated, onNeedsClarification, onCancel }: NewP
           steps={[
             "The Extraction Agent pulls out the problem, goals, and target users",
             "The Clarify Agent asks a short round of questions about anything it can't infer (or accept its recommended defaults)",
-            "You get an editable spec — stories, requirements, architecture decisions, and Jira-ready epics — plus diagrams, briefs, and updates on demand",
+            "You'll get a drafted Overview to review and confirm, then work through Stories, Requirements, Test Cases, Architecture, and Epics one step at a time — each one builds on the last, confirmed step by confirmed step",
           ]}
         />
       </div>

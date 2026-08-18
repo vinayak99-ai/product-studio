@@ -112,7 +112,14 @@ export function SourceNotesSection({
       // state -- flush a pending edit first so it isn't regenerating from
       // stale notes.
       if (dirty) await doSave()
-      const res = await api.regenerateSpec(projectId)
+      // resetPipeline clears every step back to not_started (a fresh
+      // version, prior drafts stay in Version History) -- immediately
+      // kick off a fresh Overview draft from the same notes so this
+      // button still reads as "redraft the whole spec" in one click, even
+      // though every step past Overview now needs to be walked through
+      // again one at a time.
+      await api.resetPipeline(projectId)
+      const res = await api.generateOverview(projectId, rawNotesRef.current)
       if (res.status === "needs_clarification") {
         onNeedsClarification(projectId, projectName, res.questions)
       } else {
@@ -162,8 +169,10 @@ export function SourceNotesSection({
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          The raw notes behind this spec. Edit them and regenerate to redraft the whole spec from
-          scratch — the current version is kept in Version History, so nothing is lost.
+          The raw notes behind this spec. Edit them and regenerate to reset every pipeline step and
+          redraft the Overview from scratch — the current version is kept in Version History, so
+          nothing is lost, but Stories, Requirements, Test Cases, Architecture, and Epics will need
+          to be confirmed again one step at a time.
         </p>
         <Button
           type="button"

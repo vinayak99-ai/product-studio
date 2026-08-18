@@ -179,11 +179,15 @@ export function ProjectList({ onSelectProject, onNewProject }: ProjectListProps)
                               <FileText className="size-3" /> no spec yet
                             </Badge>
                           )}
-                          {project.summary.stage === "drafted" && (
+                          {(project.summary.stage === "in_progress" || project.summary.stage === "complete") && (
                             <>
                               <Badge variant="outline">
                                 <FileText className="size-3" />
-                                {project.summary.in_jira ? "in Jira" : "drafted"}
+                                {project.summary.in_jira
+                                  ? "in Jira"
+                                  : project.summary.stage === "complete"
+                                    ? "complete"
+                                    : `in progress · ${project.summary.current_step ?? ""}`}
                               </Badge>
                               {project.summary.epic_count > 0 && (
                                 <Badge variant="outline">

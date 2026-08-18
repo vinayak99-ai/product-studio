@@ -1,5 +1,25 @@
+export type StepId = "overview" | "stories" | "requirements" | "test_cases" | "architecture" | "epics"
+
+export const STEP_ORDER: StepId[] = [
+  "overview", "stories", "requirements", "test_cases", "architecture", "epics",
+]
+
+export type StepStatus = "not_started" | "needs_clarification" | "drafted" | "confirmed" | "stale"
+
+export interface StepState {
+  status: StepStatus
+  confirmed_at: string | null
+  confirmed_version: number | null
+}
+
+export interface PipelineState {
+  steps: Record<StepId, StepState>
+  current_step: StepId
+}
+
 export interface ProjectSummary {
-  stage: "empty" | "clarifying" | "drafted"
+  stage: "empty" | "clarifying" | "in_progress" | "complete"
+  current_step: StepId | null
   pending_questions: number
   epic_count: number
   high_impact_epics: number
@@ -48,9 +68,28 @@ export interface KeyEntity {
   description: string
 }
 
-export interface SuccessCriterion {
+export interface AcceptanceTest {
   id: string
-  text: string
+  fr_id: string
+  title: string
+  given: string
+  when: string
+  then: string
+}
+
+export interface Persona {
+  id: string
+  name: string
+  description: string
+  pain_points: string[]
+}
+
+export interface UseCase {
+  id: string
+  title: string
+  actor: string
+  goal: string
+  trigger: string
 }
 
 export type DiagramType = "journey" | "sequence"
@@ -99,20 +138,58 @@ export interface Epic {
   business_impact_rationale: string
 }
 
+export interface ScopeCheckVerdict {
+  classification: "cosmetic" | "scope_change"
+  rationale: string
+  affected_downstream_steps: StepId[]
+}
+
+export type CompletenessSeverity = "high" | "medium" | "low"
+
+export interface CompletenessIssue {
+  id: string
+  severity: CompletenessSeverity
+  area: string
+  description: string
+  related_ids: string[]
+}
+
+export interface CompletenessReview {
+  issues: CompletenessIssue[]
+  reviewed_at: string
+  reviewed_version: number
+}
+
 export interface GeneratedPRD {
   title: string
+  // ---- Step 1: Overview ----
+  problem_statement: string
+  goals: string[]
+  target_users: string[]
+  open_questions: string[]
+  personas: Persona[]
+  use_cases: UseCase[]
+  // ---- Step 2: User Stories + Edge Cases ----
   user_stories: UserStory[]
   edge_cases: string[]
+  // ---- Step 3: Functional Requirements ----
   functional_requirements: FunctionalRequirement[]
   key_entities: KeyEntity[]
-  success_criteria: SuccessCriterion[]
   assumptions: string[]
+  // ---- Step 4: Test Cases (per-FR acceptance tests) ----
+  test_cases: AcceptanceTest[]
   diagrams: Diagram[]
+  // ---- Step 5: Architecture ----
   architecture_decisions: ArchitectureDecision[]
   technical_context: AnsweredClarification[]
+  architecture_clarify_history: AnsweredClarification[]
+  // ---- Step 6: Epics ----
   epics: Epic[]
   briefs: StakeholderBrief[]
   updates: ComposedUpdate[]
+  // ---- Pipeline metadata ----
+  pipeline: PipelineState
+  completeness_review: CompletenessReview | null
 }
 
 export interface ClarifyQuestion {
@@ -134,11 +211,17 @@ export interface SpecInput {
   updated_at: string
 }
 
-export interface GenerateResponse {
-  status: "needs_clarification" | "generated"
+export interface StepGenerateResponse {
+  status: "needs_clarification" | "drafted"
   questions: ClarifyQuestion[]
   artifact_id: string | null
   prd: GeneratedPRD | null
+}
+
+export interface StepEditResponse {
+  prd: GeneratedPRD
+  scope_check: ScopeCheckVerdict | null
+  cascaded_to: StepId[]
 }
 
 export type ExportFormat = "md" | "docx" | "csv" | "epics-csv"
@@ -227,6 +310,7 @@ export interface ArtifactVersionMeta {
   version: number
   saved_at: string
   reason: string
+  cascaded_to: StepId[]
 }
 
 export interface DiffEntry {
