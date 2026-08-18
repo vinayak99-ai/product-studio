@@ -52,7 +52,7 @@ def create_collection(name: str, is_default_included: bool = False) -> KbCollect
         is_default_included=is_default_included,
     )
     _documents_dir(collection_id).mkdir(parents=True, exist_ok=True)
-    _collection_meta_path(collection_id).write_text(meta.model_dump_json(indent=2))
+    _collection_meta_path(collection_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -63,7 +63,7 @@ def list_collections() -> list[KbCollectionMeta]:
     for col_dir in DATA_ROOT.iterdir():
         meta_file = col_dir / "meta.json"
         if meta_file.exists():
-            collections.append(KbCollectionMeta.model_validate_json(meta_file.read_text()))
+            collections.append(KbCollectionMeta.model_validate_json(meta_file.read_text(encoding="utf-8")))
     return sorted(collections, key=lambda c: c.name.lower())
 
 
@@ -72,19 +72,19 @@ def collection_exists(collection_id: str) -> bool:
 
 
 def get_collection(collection_id: str) -> KbCollectionMeta:
-    return KbCollectionMeta.model_validate_json(_collection_meta_path(collection_id).read_text())
+    return KbCollectionMeta.model_validate_json(_collection_meta_path(collection_id).read_text(encoding="utf-8"))
 
 
 def rename_collection(collection_id: str, name: str) -> KbCollectionMeta:
     meta = get_collection(collection_id)
     meta.name = name
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _collection_meta_path(collection_id).write_text(meta.model_dump_json(indent=2))
+    _collection_meta_path(collection_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 def _touch_collection(meta: KbCollectionMeta) -> None:
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _collection_meta_path(meta.id).write_text(meta.model_dump_json(indent=2))
+    _collection_meta_path(meta.id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
 
 def delete_collection(collection_id: str) -> None:
@@ -96,18 +96,18 @@ def list_documents(collection_id: str) -> list[KbDocumentMeta]:
     if not docs_dir.exists():
         return []
     documents = [
-        KbDocumentMeta.model_validate_json(f.read_text())
+        KbDocumentMeta.model_validate_json(f.read_text(encoding="utf-8"))
         for f in docs_dir.glob("*.json")
     ]
     return sorted(documents, key=lambda d: d.filename.lower())
 
 
 def get_document(collection_id: str, document_id: str) -> KbDocumentMeta:
-    return KbDocumentMeta.model_validate_json(_document_meta_path(collection_id, document_id).read_text())
+    return KbDocumentMeta.model_validate_json(_document_meta_path(collection_id, document_id).read_text(encoding="utf-8"))
 
 
 def load_document_content(collection_id: str, document_id: str) -> str:
-    return _document_content_path(collection_id, document_id).read_text()
+    return _document_content_path(collection_id, document_id).read_text(encoding="utf-8")
 
 
 def save_document(
@@ -127,8 +127,8 @@ def save_document(
         uploaded_at=now,
         updated_at=now,
     )
-    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2))
-    _document_content_path(collection_id, document_id).write_text(content)
+    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
+    _document_content_path(collection_id, document_id).write_text(content, encoding="utf-8")
     logger.info("save_document: wrote %r as document=%s in collection=%s", filename, document_id, collection_id)
 
     col_meta = get_collection(collection_id)
@@ -140,8 +140,8 @@ def save_document(
 def replace_document_content(collection_id: str, document_id: str, content: str) -> KbDocumentMeta:
     meta = get_document(collection_id, document_id)
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2))
-    _document_content_path(collection_id, document_id).write_text(content)
+    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
+    _document_content_path(collection_id, document_id).write_text(content, encoding="utf-8")
 
     col_meta = get_collection(collection_id)
     _touch_collection(col_meta)
@@ -151,13 +151,13 @@ def replace_document_content(collection_id: str, document_id: str, content: str)
 def set_document_description(collection_id: str, document_id: str, description: str | None) -> None:
     meta = get_document(collection_id, document_id)
     meta.description = description
-    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2))
+    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
 
 def set_document_chunk_count(collection_id: str, document_id: str, chunk_count: int) -> None:
     meta = get_document(collection_id, document_id)
     meta.chunk_count = chunk_count
-    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2))
+    _document_meta_path(collection_id, document_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
 
 def delete_document(collection_id: str, document_id: str) -> None:

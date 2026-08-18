@@ -965,7 +965,7 @@ def api_export_brief(project_id: str, artifact_id: str, audience: Literal["execu
     tmp_dir = tempfile.mkdtemp()
     if format == "md":
         path = os.path.join(tmp_dir, f"{brief.title}.md")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(export_brief_to_markdown(brief))
         media_type = "text/markdown"
     elif format == "docx":
@@ -1057,7 +1057,7 @@ def api_export_update(project_id: str, artifact_id: str, update_id: str, format:
     tmp_dir = tempfile.mkdtemp()
     if format == "md":
         path = os.path.join(tmp_dir, f"{update.title}.md")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(export_update_to_markdown(update))
         media_type = "text/markdown"
     elif format == "docx":
@@ -1117,7 +1117,7 @@ def api_export(project_id: str, artifact_id: str, format: str):
     tmp_dir = tempfile.mkdtemp()
     if format == "md":
         path = os.path.join(tmp_dir, f"{prd.title}.md")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(export_to_markdown(prd))
         media_type = "text/markdown"
     elif format == "docx":

@@ -32,7 +32,7 @@ def _load_content(session_id: str) -> dict:
     path = _content_path(session_id)
     if not path.exists():
         return {"questions": [], "notes": "", "enriched_notes": ""}
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _save_content(session_id: str, questions: list[DiscoveryQuestion], notes: str, enriched_notes: str) -> None:
@@ -40,7 +40,8 @@ def _save_content(session_id: str, questions: list[DiscoveryQuestion], notes: st
         json.dumps(
             {"questions": [q.model_dump() for q in questions], "notes": notes, "enriched_notes": enriched_notes},
             indent=2,
-        )
+        ),
+        encoding="utf-8",
     )
 
 
@@ -65,7 +66,7 @@ def create_session(
     _recompute_counts(meta, questions)
 
     _session_dir(session_id).mkdir(parents=True, exist_ok=True)
-    _meta_path(session_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(session_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     _save_content(session_id, questions, notes="", enriched_notes="")
     return meta
 
@@ -77,7 +78,7 @@ def list_sessions() -> list[DiscoverySessionMeta]:
     for session_dir in DATA_ROOT.iterdir():
         meta_file = session_dir / "meta.json"
         if meta_file.exists():
-            sessions.append(DiscoverySessionMeta.model_validate_json(meta_file.read_text()))
+            sessions.append(DiscoverySessionMeta.model_validate_json(meta_file.read_text(encoding="utf-8")))
     return sorted(sessions, key=lambda s: s.updated_at, reverse=True)
 
 
@@ -86,7 +87,7 @@ def session_exists(session_id: str) -> bool:
 
 
 def get_session_meta(session_id: str) -> DiscoverySessionMeta:
-    return DiscoverySessionMeta.model_validate_json(_meta_path(session_id).read_text())
+    return DiscoverySessionMeta.model_validate_json(_meta_path(session_id).read_text(encoding="utf-8"))
 
 
 def get_session_detail(session_id: str) -> DiscoverySessionDetail:
@@ -104,7 +105,7 @@ def rename_session(session_id: str, name: str) -> DiscoverySessionMeta:
     meta = get_session_meta(session_id)
     meta.name = name
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(session_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(session_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -114,7 +115,7 @@ def delete_session(session_id: str) -> None:
 
 def _touch(meta: DiscoverySessionMeta) -> None:
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(meta.id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(meta.id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
 
 def update_questions(session_id: str, questions: list[DiscoveryQuestion]) -> DiscoverySessionDetail:

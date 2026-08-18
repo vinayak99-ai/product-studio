@@ -334,7 +334,7 @@ def export_to_docx(prd, path: str):
 
 def export_stories_to_csv(prd, path: str):
     """JIRA-importable CSV bridge (no API integration needed yet)."""
-    with open(path, "w", newline="") as f:
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(["Priority", "Summary", "Description", "Acceptance Criteria"])
         for story in prd.user_stories:
@@ -419,7 +419,7 @@ def export_epics_to_csv(prd, path: str):
     """Jira bulk-CSV-importer bridge for Epics + Stories (offline alternative
     to the live push in jira_client.py -- Jira's importer links a Story to
     its Epic by matching 'Epic Link' text against an Epic row's 'Epic Name')."""
-    with open(path, "w", newline="") as f:
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(["Issue Type", "Epic Name", "Epic Link", "Summary", "Description", "Acceptance Criteria"])
         for epic in prd.epics:

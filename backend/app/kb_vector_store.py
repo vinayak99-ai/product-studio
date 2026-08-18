@@ -45,7 +45,7 @@ def _ensure_compatible_chroma_data() -> None:
     wrote it. Called once before the client is created so the directory is
     always in a state the current bindings can safely open."""
     current = chromadb.__version__
-    stored = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else None
+    stored = _VERSION_FILE.read_text(encoding="utf-8").strip() if _VERSION_FILE.exists() else None
     if stored == current:
         return
     if stored is None and DATA_ROOT.exists() and any(DATA_ROOT.iterdir()):
@@ -66,7 +66,7 @@ def _ensure_compatible_chroma_data() -> None:
     if DATA_ROOT.exists():
         shutil.rmtree(DATA_ROOT)
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    _VERSION_FILE.write_text(current)
+    _VERSION_FILE.write_text(current, encoding="utf-8")
 
 
 @lru_cache

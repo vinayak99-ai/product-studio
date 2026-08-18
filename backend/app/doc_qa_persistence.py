@@ -25,7 +25,7 @@ def create_project(name: str) -> DocQaProjectMeta:
     meta = DocQaProjectMeta(id=project_id, name=name, created_at=now, updated_at=now)
 
     _project_dir(project_id).mkdir(parents=True, exist_ok=True)
-    _meta_path(project_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(project_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -36,19 +36,19 @@ def list_projects() -> list[DocQaProjectMeta]:
     for proj_dir in DATA_ROOT.iterdir():
         meta_file = proj_dir / "meta.json"
         if meta_file.exists():
-            projects.append(DocQaProjectMeta.model_validate_json(meta_file.read_text()))
+            projects.append(DocQaProjectMeta.model_validate_json(meta_file.read_text(encoding="utf-8")))
     return sorted(projects, key=lambda p: p.updated_at, reverse=True)
 
 
 def get_project(project_id: str) -> DocQaProjectMeta:
-    return DocQaProjectMeta.model_validate_json(_meta_path(project_id).read_text())
+    return DocQaProjectMeta.model_validate_json(_meta_path(project_id).read_text(encoding="utf-8"))
 
 
 def rename_project(project_id: str, name: str) -> DocQaProjectMeta:
     meta = get_project(project_id)
     meta.name = name
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(project_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(project_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -58,14 +58,14 @@ def delete_project(project_id: str) -> None:
 
 def _touch(meta: DocQaProjectMeta) -> None:
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(meta.id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(meta.id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
 
 def save_document(project_id: str, filename: str, text: str) -> DocQaProjectMeta:
     """Replacing the document invalidates the summary and chat -- both were
     grounded in the old text, so keeping them around would silently answer
     from a document that's no longer there."""
-    (_project_dir(project_id) / "document.txt").write_text(text)
+    (_project_dir(project_id) / "document.txt").write_text(text, encoding="utf-8")
     _summary_path(project_id).unlink(missing_ok=True)
     _chat_path(project_id).unlink(missing_ok=True)
 
@@ -79,7 +79,7 @@ def save_document(project_id: str, filename: str, text: str) -> DocQaProjectMeta
 
 def load_document(project_id: str) -> str | None:
     path = _project_dir(project_id) / "document.txt"
-    return path.read_text() if path.exists() else None
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def _summary_path(project_id: str) -> Path:
@@ -87,7 +87,7 @@ def _summary_path(project_id: str) -> Path:
 
 
 def save_summary(project_id: str, summary: str) -> DocQaProjectMeta:
-    _summary_path(project_id).write_text(summary)
+    _summary_path(project_id).write_text(summary, encoding="utf-8")
     meta = get_project(project_id)
     meta.has_summary = True
     _touch(meta)
@@ -96,7 +96,7 @@ def save_summary(project_id: str, summary: str) -> DocQaProjectMeta:
 
 def load_summary(project_id: str) -> str | None:
     path = _summary_path(project_id)
-    return path.read_text() if path.exists() else None
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def _chat_path(project_id: str) -> Path:
@@ -107,13 +107,13 @@ def load_chat(project_id: str) -> list[ChatMessage]:
     path = _chat_path(project_id)
     if not path.exists():
         return []
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return [ChatMessage.model_validate(m) for m in data]
 
 
 def append_chat_messages(project_id: str, messages: list[ChatMessage]) -> list[ChatMessage]:
     chat = load_chat(project_id) + messages
-    _chat_path(project_id).write_text(json.dumps([m.model_dump() for m in chat], indent=2))
+    _chat_path(project_id).write_text(json.dumps([m.model_dump() for m in chat], indent=2), encoding="utf-8")
 
     meta = get_project(project_id)
     meta.message_count = len(chat)

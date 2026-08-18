@@ -43,10 +43,10 @@ def create_connection(
     )
 
     _connection_dir(connection_id).mkdir(parents=True, exist_ok=True)
-    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     # Kept in its own file, never merged into meta.json, so listing/reading
     # a connection's metadata can never accidentally echo the token back.
-    _secret_path(connection_id).write_text(json.dumps({"api_token": api_token}))
+    _secret_path(connection_id).write_text(json.dumps({"api_token": api_token}), encoding="utf-8")
     return meta
 
 
@@ -57,16 +57,16 @@ def list_connections() -> list[JiraConnectionMeta]:
     for conn_dir in DATA_ROOT.iterdir():
         meta_file = conn_dir / "meta.json"
         if meta_file.exists():
-            connections.append(JiraConnectionMeta.model_validate_json(meta_file.read_text()))
+            connections.append(JiraConnectionMeta.model_validate_json(meta_file.read_text(encoding="utf-8")))
     return sorted(connections, key=lambda c: c.updated_at, reverse=True)
 
 
 def get_connection(connection_id: str) -> JiraConnectionMeta:
-    return JiraConnectionMeta.model_validate_json(_meta_path(connection_id).read_text())
+    return JiraConnectionMeta.model_validate_json(_meta_path(connection_id).read_text(encoding="utf-8"))
 
 
 def get_secret(connection_id: str) -> str:
-    data = json.loads(_secret_path(connection_id).read_text())
+    data = json.loads(_secret_path(connection_id).read_text(encoding="utf-8"))
     return data["api_token"]
 
 
@@ -74,7 +74,7 @@ def rename_connection(connection_id: str, name: str) -> JiraConnectionMeta:
     meta = get_connection(connection_id)
     meta.name = name
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -85,7 +85,7 @@ def delete_connection(connection_id: str) -> None:
 def save_snapshot(
     connection_id: str, snapshot: JiraProjectSnapshot, truncated: bool
 ) -> JiraConnectionMeta:
-    _snapshot_path(connection_id).write_text(snapshot.model_dump_json(indent=2))
+    _snapshot_path(connection_id).write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
 
     issue_count = len(snapshot.other_issues) + sum(
         1 + len(e.stories) for e in snapshot.epics
@@ -95,7 +95,7 @@ def save_snapshot(
     meta.issue_count = issue_count
     meta.truncated = truncated
     meta.updated_at = datetime.now(timezone.utc).isoformat()
-    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2))
+    _meta_path(connection_id).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
     return meta
 
 
@@ -103,4 +103,4 @@ def load_snapshot(connection_id: str) -> JiraProjectSnapshot | None:
     path = _snapshot_path(connection_id)
     if not path.exists():
         return None
-    return JiraProjectSnapshot.model_validate_json(path.read_text())
+    return JiraProjectSnapshot.model_validate_json(path.read_text(encoding="utf-8"))
