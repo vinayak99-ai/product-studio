@@ -80,7 +80,7 @@ export const TOOLS: ToolDef[] = [
     description:
       'Describe a process, decision flow, hierarchy, architecture, or timeline and get a ' +
       'hand-composed diagram -- shape encodes meaning, one accent color, no crisscrossing ' +
-      'layout-engine routing -- exported as a full-bleed slide image.',
+      'layout-engine routing -- exportable as SVG.',
   },
   {
     id: 'infographic',

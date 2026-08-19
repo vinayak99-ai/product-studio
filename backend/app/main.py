@@ -1,15 +1,3 @@
-# Windows note: Diagram Slides (routes/diagram_slide.py) launches headless
-# Chromium via Playwright's async API, which needs subprocess support from
-# the running event loop -- plain uvicorn on Windows defaults to
-# WindowsSelectorEventLoop, which doesn't have that. That fix (forcing the
-# Proactor event loop policy) does NOT live here: it has to run before
-# uvicorn creates its event loop, and with --reload uvicorn can create that
-# loop before this module gets (re-)imported, so a module-level line here
-# isn't reliably early enough. See run_backend.py (repo root), which sets
-# the policy in a standalone script before uvicorn is even imported, then
-# starts uvicorn programmatically -- run that (or start-backend.ps1/
-# start.ps1) instead of the bare `uvicorn app.main:app` command on Windows.
-
 import logging
 import time
 

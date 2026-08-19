@@ -115,9 +115,9 @@ function App() {
 
         {/* Hand-composed SVG under strict style/layout rules, not a
             graph-layout algorithm (see backend/app/diagram_slide_rules.py) --
-            the preview iframe renders the exact same HTML that gets
-            screenshotted server-side for the export, so what's shown here is
-            what ends up in the slide. */}
+            the preview iframe renders the exact same HTML that the SVG
+            export pulls the <svg> out of client-side, so what's shown here
+            is exactly what gets downloaded. */}
         <div className={`min-h-0 flex-1 ${activeTool === 'diagram_slide' ? 'flex' : 'hidden'}`}>
           <DiagramSlideSidebar onResult={setDiagramSlideResult} />
           <main className="flex min-w-0 flex-1 flex-col">

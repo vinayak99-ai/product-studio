@@ -116,51 +116,8 @@ function slugify(title: string): string {
   return slug || 'diagram-slide'
 }
 
-// Like exportInfographicPptx: the deliverable is a real .pptx built server-side
-// (here by rendering `html` with Playwright and embedding the screenshot
-// full-bleed), so this fetches the binary and triggers a download rather than
-// rendering anything client-side.
-export async function exportDiagramSlidePptx(result: DiagramSlideResult): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/diagram-slide/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(result),
-  })
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${slugify(result.title)}.pptx`
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-// Same server-side Playwright render as the PPTX export, returned as a
-// standalone image instead of embedded in a slide -- for dropping into
-// PowerPoint (or anywhere else) by hand.
-export async function exportDiagramSlidePng(result: DiagramSlideResult): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/diagram-slide/export-png`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(result),
-  })
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${slugify(result.title)}.png`
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-// Unlike PNG/PPTX, this needs no round trip -- `result.html` already
-// contains the inline <svg>, so this pulls it out client-side (via
+// Diagram Slides' only export -- `result.html` already contains the inline
+// <svg>, so this needs no server round trip: pulls it out client-side (via
 // DOMParser on the HTML string itself, not the sandboxed preview iframe --
 // sandbox="" gives that iframe an opaque origin the parent can't reach into)
 // and serializes just that node back out as a standalone .svg file.

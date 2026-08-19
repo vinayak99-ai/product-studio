@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { exportDiagramSlidePng, exportDiagramSlidePptx, exportDiagramSlideSvg } from '../lib/api'
+import { exportDiagramSlideSvg } from '../lib/api'
 import type { DiagramSlideResult, DiagramSlideType } from '../diagramSlideTypes'
 import { EmptyCanvasState } from './EmptyCanvasState'
 import { DiagramSlideIcon } from './icons/ToolIcons'
@@ -24,7 +24,7 @@ const TYPE_LABEL: Record<DiagramSlideType, string> = {
 }
 
 export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {
-  const [busy, setBusy] = useState<'pptx' | 'png' | 'svg' | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
@@ -45,19 +45,13 @@ export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {
     }
   }
 
-  const handleDownload = async (kind: 'pptx' | 'png' | 'svg') => {
+  const handleDownload = () => {
     if (!result) return
-    setBusy(kind)
+    setExporting(true)
     try {
-      if (kind === 'pptx') {
-        await exportDiagramSlidePptx(result)
-      } else if (kind === 'png') {
-        await exportDiagramSlidePng(result)
-      } else {
-        exportDiagramSlideSvg(result)
-      }
+      exportDiagramSlideSvg(result)
     } finally {
-      setBusy(null)
+      setExporting(false)
     }
   }
 
@@ -86,27 +80,11 @@ export function DiagramSlideCanvas({ result }: DiagramSlideCanvasProps) {
           </button>
           <button
             type="button"
-            disabled={!result || busy !== null}
-            onClick={() => handleDownload('svg')}
+            disabled={!result || exporting}
+            onClick={handleDownload}
             className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy === 'svg' ? 'Exporting…' : 'Download SVG'}
-          </button>
-          <button
-            type="button"
-            disabled={!result || busy !== null}
-            onClick={() => handleDownload('png')}
-            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy === 'png' ? 'Exporting…' : 'Download PNG'}
-          </button>
-          <button
-            type="button"
-            disabled={!result || busy !== null}
-            onClick={() => handleDownload('pptx')}
-            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy === 'pptx' ? 'Exporting…' : 'Download PPTX'}
+            {exporting ? 'Exporting…' : 'Download SVG'}
           </button>
         </div>
       </div>
