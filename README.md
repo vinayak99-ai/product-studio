@@ -113,11 +113,11 @@ directly. `LLM_PROVIDER=openai` (the default) uses `OPENAI_API_KEY`/`OPENAI_MODE
 until you fill in your gateway's actual request/response shape and auth scheme (its
 docstring walks through exactly what to implement). Until then, leave `LLM_PROVIDER=openai`.
 
-One exception: Knowledge Base's *embeddings* (`app/kb_vector_store.py`) always use OpenAI's
-`text-embedding-3-small` directly, regardless of `LLM_PROVIDER` — only the search answer's
-generation step goes through the switchable provider above. `OPENAI_API_KEY` still needs to
-be a real key for document ingestion/search to work even when running with
-`LLM_PROVIDER=corporate`.
+One exception: Knowledge Base's *embeddings* (`app/kb_vector_store.py`) always run through
+Chroma's built-in local `DefaultEmbeddingFunction` (ONNX MiniLM-L6-v2) regardless of
+`LLM_PROVIDER` — fully offline, no API key needed for document ingestion/search itself. Only
+the search answer's generation step goes through the switchable provider above, so
+`OPENAI_API_KEY` (or your corporate gateway) is still needed for that, just not for embedding.
 
 Spec Builder used to run on a separate framework (pydantic-ai, configured via `AIPM_MODEL`)
 pointed at Anthropic by default. That's gone — Spec Builder's 9 agents now go through the
@@ -261,8 +261,8 @@ updates, glossary, known gaps) is documented in
 2. Open a collection and add documents: paste markdown or upload a `.md` file. Each one is
    split with markdown-aware chunking — it splits on heading boundaries, never mid-table or
    mid-code-block (a table too large for one chunk splits into row-groups with the header
-   row repeated), and every chunk is embedded via OpenAI (`text-embedding-3-small`) into a
-   local ChromaDB index, one per collection.
+   row repeated), and every chunk is embedded locally (Chroma's built-in ONNX MiniLM, no API
+   key or network call) into a local ChromaDB index, one per collection.
 3. Optionally flag one document as the collection's **catalog** — a markdown table mapping
    filenames to what they contain. Its rows are parsed independently of chunking and used
    to enrich every document it references with a description; rows that don't match an

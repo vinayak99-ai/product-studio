@@ -27,12 +27,12 @@ from app.routes.doc_qa import router as doc_qa_router
 from app.routes.jira import router as jira_router
 from app.routes.deep_analysis import router as deep_analysis_router
 from app.routes.diagram_slide import router as diagram_slide_router
-from app.routes.knowledge_base import router as knowledge_base_router
+from app.routes.knowledge_base import reindex_all_collections, router as knowledge_base_router
 from app.routes.discovery_qa import router as discovery_qa_router
 from app.routes.system_map import router as system_map_router
 from app.spec_builder.main import app as spec_builder_app
 from app.kb_models import SEED_COLLECTIONS, SEED_DEFAULT_INCLUDED
-from app import kb_persistence
+from app import kb_persistence, kb_vector_store
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -114,3 +114,12 @@ async def _seed_knowledge_base_collections() -> None:
     kb_persistence.seed_default_collections(
         {name: name in SEED_DEFAULT_INCLUDED for name in SEED_COLLECTIONS}
     )
+    # Reads the Chroma version/embedding-function markers and wipes the
+    # vector index if either changed since it was written (see
+    # kb_vector_store._ensure_compatible_chroma_data) -- when that happens,
+    # every existing document's chunks need re-embedding from their stored
+    # source text before search works again, so it's done here eagerly
+    # rather than left to silently return zero hits on the next query.
+    if kb_vector_store.reembed_all_needed():
+        logger.info("Embedding index was rebuilt -- re-embedding all Knowledge Base documents")
+        reindex_all_collections()

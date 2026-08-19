@@ -188,11 +188,16 @@ way.
 - **One Chroma collection per Knowledge Base collection** (1:1 mapping) —
   simplest correct model; a metadata-filtered single collection was
   considered and rejected as unnecessary complexity for this scale.
-- **Embedding function**: OpenAI `text-embedding-3-small`, for consistency
-  with `llm_client.py` (already OpenAI-based) over Chroma's default local
-  model — avoids adding a new heavy ML dependency (sentence-transformers /
-  torch) for a codebase that doesn't currently ship any local model weights.
-  Revisit only if cost or an offline requirement becomes real.
+- **Embedding function**: Chroma's built-in local `DefaultEmbeddingFunction`
+  (ONNX MiniLM-L6-v2) — offline, no OpenAI key or network round trip per
+  chunk/query, zero new dependencies (chromadb already vendors onnxruntime
+  for it). Originally OpenAI `text-embedding-3-small` for consistency with
+  `llm_client.py`; switched once local-only operation mattered more than
+  that consistency. A model switch ties to `_EMBEDDING_FUNCTION_ID` in
+  `kb_vector_store.py`, which wipes and triggers a full local re-embed of
+  every document on the next startup when it changes (see
+  `reembed_all_needed()` / `reindex_all_collections()`) — no OpenAI calls
+  involved, since the original text lives on disk independently of Chroma.
 - **Replace/delete**: `collection.delete(where={"document_id": "..."})` to
   drop every chunk for a document in one call, then re-chunk + re-embed on
   re-upload. Full replace, not an incremental diff — avoids any risk of

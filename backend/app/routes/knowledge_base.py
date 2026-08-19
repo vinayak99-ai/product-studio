@@ -47,6 +47,25 @@ def _ingest_document(
     logger.info("_ingest_document: finished %r", document.filename)
 
 
+def reindex_all_collections() -> None:
+    """Re-chunks and re-embeds every document in every collection from its
+    stored source text (kb_persistence, untouched by an embedding change)
+    -- called once at startup after kb_vector_store.reembed_all_needed()
+    reports the vector index was wiped for a Chroma version or embedding
+    function change, so search keeps working on the next request instead
+    of silently returning zero hits until each document happens to get
+    re-uploaded by hand. Purely mechanical: reuses each document's already-
+    stored description, no LLM calls."""
+    collections = kb_persistence.list_collections()
+    logger.info("reindex_all_collections: rebuilding %d collection(s)", len(collections))
+    for collection in collections:
+        documents = kb_persistence.list_documents(collection.id)
+        for document in documents:
+            content = kb_persistence.load_document_content(collection.id, document.id)
+            _ingest_document(collection.id, collection.name, document, content)
+    logger.info("reindex_all_collections: done")
+
+
 def _refresh_catalog_enrichment(collection_id: str) -> list:
     """Re-runs whenever any document in the collection changes. If there's
     no catalog document, this is just drift-free -- returns no warnings and

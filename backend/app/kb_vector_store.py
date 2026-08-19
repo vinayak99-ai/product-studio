@@ -3,9 +3,12 @@ Base collection (1:1, see docs/knowledge-base/PLAN.md), keyed by the
 generated collection id rather than its human-facing name, so a rename
 never touches the Chroma side at all.
 
-Embeddings: OpenAI's text-embedding-3-small, for consistency with
-llm_client.py (already OpenAI-based) rather than Chroma's default local
-model -- see the plan's "Vector store (ChromaDB)" section for why.
+Embeddings: ChromaDB's built-in local DefaultEmbeddingFunction (ONNX
+MiniLM-L6-v2, 384 dims) -- runs fully offline after the model's first
+download, no OpenAI API key or network round trip needed per chunk/query,
+and zero new dependencies (chromadb already vendors onnxruntime for this).
+Previously used OpenAI's text-embedding-3-small; switched to keep KB usable
+without an OpenAI key and to cut ingest/query latency to local inference.
 """
 
 from __future__ import annotations
@@ -20,7 +23,6 @@ import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb.utils import embedding_functions
 
-from app.config import get_settings
 from app.kb_chunking import MarkdownChunk
 from app.kb_models import KbChunkMetadata
 
@@ -32,6 +34,16 @@ DATA_ROOT = Path.home() / "kb-data" / "chroma"
 # that would cause a native Rust panic on the first write if left in place.
 _VERSION_FILE = DATA_ROOT.parent / "chroma_version"
 
+# Tracks which embedding function wrote the data directory. Chroma ties an
+# embedding function to a collection permanently at creation (vectors from
+# two different models aren't comparable), so switching models -- like this
+# one, OpenAI text-embedding-3-small -> local ONNX MiniLM -- needs the same
+# wipe-and-rebuild treatment as a Chroma version mismatch, not just a code
+# change. See reembed_all_needed() below, and
+# routes/knowledge_base.py's reindex_all_collections() for the rebuild step.
+_EMBEDDING_FUNCTION_MARKER_FILE = DATA_ROOT.parent / "embedding_function"
+_EMBEDDING_FUNCTION_ID = "chroma-default-onnx-minilm-l6-v2"
+
 # How many chunks to pull per collection before merging, when a search
 # spans multiple collections -- wider than the final answer's context so
 # re-ranking has real candidates to choose from rather than just whatever
@@ -40,33 +52,74 @@ PER_COLLECTION_CANDIDATES = 8
 FINAL_TOP_N = 8
 
 
-def _ensure_compatible_chroma_data() -> None:
-    """Wipe DATA_ROOT when the installed ChromaDB version doesn't match what
-    wrote it. Called once before the client is created so the directory is
-    always in a state the current bindings can safely open."""
-    current = chromadb.__version__
-    stored = _VERSION_FILE.read_text(encoding="utf-8").strip() if _VERSION_FILE.exists() else None
-    if stored == current:
-        return
-    if stored is None and DATA_ROOT.exists() and any(DATA_ROOT.iterdir()):
+def _ensure_compatible_chroma_data() -> bool:
+    """Wipe DATA_ROOT when the installed ChromaDB version, or the embedding
+    function, doesn't match what wrote it -- a vector from one embedding
+    model is meaningless compared against vectors from another, so a model
+    change needs the same treatment as an incompatible on-disk format.
+    Called once before the client is created so the directory is always in
+    a state the current bindings can safely open. Returns True if it
+    wiped, so the caller knows every existing document needs re-embedding
+    (see reembed_all_needed())."""
+    version_current = chromadb.__version__
+    version_stored = _VERSION_FILE.read_text(encoding="utf-8").strip() if _VERSION_FILE.exists() else None
+    ef_stored = (
+        _EMBEDDING_FUNCTION_MARKER_FILE.read_text(encoding="utf-8").strip()
+        if _EMBEDDING_FUNCTION_MARKER_FILE.exists()
+        else None
+    )
+    if version_stored == version_current and ef_stored == _EMBEDDING_FUNCTION_ID:
+        return False
+
+    data_exists = DATA_ROOT.exists() and any(DATA_ROOT.iterdir())
+    if version_stored is None and ef_stored is None and data_exists:
         logger.warning(
-            "kb_vector_store: existing ChromaDB data at %s has no version marker "
+            "kb_vector_store: existing ChromaDB data at %s has no version/embedding marker "
             "-- wiping to avoid format mismatch with installed version %s",
             DATA_ROOT,
-            current,
+            version_current,
         )
-    elif stored is not None:
+    elif version_stored is not None and version_stored != version_current:
         logger.warning(
             "kb_vector_store: ChromaDB version changed %s -> %s "
             "-- wiping stale vector index at %s (document files are unaffected)",
-            stored,
-            current,
+            version_stored,
+            version_current,
             DATA_ROOT,
+        )
+    elif ef_stored is not None and ef_stored != _EMBEDDING_FUNCTION_ID:
+        logger.warning(
+            "kb_vector_store: embedding function changed %s -> %s "
+            "-- wiping stale vector index at %s (document files are unaffected, will be re-embedded)",
+            ef_stored,
+            _EMBEDDING_FUNCTION_ID,
+            DATA_ROOT,
+        )
+    elif ef_stored is None and data_exists:
+        # Upgrading from before embedding-function tracking existed --
+        # the chroma-version marker alone was never proof the embeddings
+        # underneath it were still OpenAI's, so this still needs a rebuild.
+        logger.warning(
+            "kb_vector_store: no embedding-function marker found (pre-dates embedding tracking) "
+            "-- wiping stale vector index at %s to re-embed with %s (document files are unaffected)",
+            DATA_ROOT,
+            _EMBEDDING_FUNCTION_ID,
         )
     if DATA_ROOT.exists():
         shutil.rmtree(DATA_ROOT)
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    _VERSION_FILE.write_text(current, encoding="utf-8")
+    _VERSION_FILE.write_text(version_current, encoding="utf-8")
+    _EMBEDDING_FUNCTION_MARKER_FILE.write_text(_EMBEDDING_FUNCTION_ID, encoding="utf-8")
+    return True
+
+
+def reembed_all_needed() -> bool:
+    """True if the vector index was just wiped (version or embedding-function
+    change) and every existing document needs re-embedding from its stored
+    source text before search will find anything again. Safe to call more
+    than once -- only the first call after a real change does the wipe and
+    returns True; later calls are no-ops that return False."""
+    return _ensure_compatible_chroma_data()
 
 
 @lru_cache
@@ -77,11 +130,8 @@ def _client() -> chromadb.ClientAPI:
 
 
 @lru_cache
-def _embedding_function() -> embedding_functions.OpenAIEmbeddingFunction:
-    settings = get_settings()
-    return embedding_functions.OpenAIEmbeddingFunction(
-        api_key=settings.openai_api_key, model_name="text-embedding-3-small"
-    )
+def _embedding_function() -> embedding_functions.DefaultEmbeddingFunction:
+    return embedding_functions.DefaultEmbeddingFunction()
 
 
 def _chroma_collection(collection_id: str) -> Collection:
@@ -108,8 +158,9 @@ def add_document_chunks(
         logger.info("add_document_chunks: %s has 0 chunks, nothing to embed", filename)
         return
     logger.info(
-        "add_document_chunks: embedding %d chunk(s) for %r (collection=%s, document=%s) via OpenAI "
-        "text-embedding-3-small -- this is a live network call, it can hang or fail here",
+        "add_document_chunks: embedding %d chunk(s) for %r (collection=%s, document=%s) via the local "
+        "ONNX MiniLM model -- runs offline, first call in a fresh environment may pause to download "
+        "the model",
         len(chunks),
         filename,
         collection_id,
@@ -193,8 +244,7 @@ def query_collection(collection_id: str, question: str, n_results: int) -> list[
         return []
     started = time.monotonic()
     try:
-        # Embeds `question` via the same OpenAI call as ingestion -- another
-        # live network call that can hang or fail here.
+        # Embeds `question` via the same local ONNX call as ingestion.
         result = col.query(query_texts=[question], n_results=min(n_results, count))
     except Exception:
         elapsed_ms = (time.monotonic() - started) * 1000
