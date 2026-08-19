@@ -126,6 +126,17 @@ export function DataIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function SystemMapIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <circle cx="5" cy="6" r="2.3" />
+      <circle cx="19" cy="6" r="2.3" />
+      <circle cx="12" cy="18" r="2.3" />
+      <path d="M7.1 7.1 12 15.7M16.9 7.1 12 15.7M7.3 6h9.4" />
+    </svg>
+  )
+}
+
 export function DiagramSlideIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>

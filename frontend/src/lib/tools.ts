@@ -12,6 +12,7 @@ import {
   SequenceIcon,
   SpecIcon,
   StoryIcon,
+  SystemMapIcon,
 } from '../components/icons/ToolIcons'
 
 export type ToolId =
@@ -26,6 +27,7 @@ export type ToolId =
   | 'knowledge_base'
   | 'discovery_qa'
   | 'jira'
+  | 'system_map'
   | 'data'
 
 export interface ToolDef {
@@ -131,6 +133,16 @@ export const TOOLS: ToolDef[] = [
       'priority, sprint, story points — straight into Product Studio, then attach it to a Spec ' +
       'Builder project to enrich its epics and stories.',
     sharedWith: 'Feeds Spec Builder project enrichment via the existing Jira import agent',
+  },
+  {
+    id: 'system_map',
+    label: 'System Map',
+    status: 'ready',
+    icon: SystemMapIcon,
+    description:
+      'Turn documents about your systems into a reviewed, versioned integration graph -- systems, ' +
+      'data flows, and PII fields -- then trace PII flows, find cycles and orphans, and check paths ' +
+      'between systems with NetworkX.',
   },
   {
     id: 'data',

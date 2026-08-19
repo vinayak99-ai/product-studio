@@ -18,6 +18,7 @@ import { KnowledgeBasePage } from './components/KnowledgeBasePage'
 import { DiscoveryQaPage } from './components/DiscoveryQaPage'
 import { JiraPage } from './components/JiraPage'
 import { DeepAnalysisPage } from './components/DeepAnalysisPage'
+import { SystemMapPage } from './components/SystemMapPage'
 import { SequenceExportControls } from './components/SequenceExportControls'
 import { themePalettes, type ThemeName } from './lib/themes'
 import { TOOLS, type ToolId } from './lib/tools'
@@ -166,6 +167,10 @@ function App() {
 
         <div className={`min-h-0 flex-1 ${activeTool === 'deep_analysis' ? 'flex' : 'hidden'}`}>
           <DeepAnalysisPage />
+        </div>
+
+        <div className={`min-h-0 flex-1 ${activeTool === 'system_map' ? 'flex' : 'hidden'}`}>
+          <SystemMapPage />
         </div>
 
         {comingSoonTool ? <ComingSoonPanel tool={comingSoonTool} /> : null}

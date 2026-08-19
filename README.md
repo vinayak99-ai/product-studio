@@ -15,6 +15,7 @@ config.
 | **Story Builder** | Ready | An existing Spec Builder project's spec → a timed executive narrative: a beat-by-beat storyline covering relevance, business value, and differentiation, a spoken script per beat, and a matching slide deck. |
 | **Knowledge Base** | Ready | Markdown docs from multiple teams organized into named collections (backed by ChromaDB), with structure-aware chunking, an optional catalog file for per-document metadata, and cross-collection search that returns a cited, markdown-formatted answer traceable back to its source document. |
 | **Discovery Q&A** | Ready | A Spec Builder project's edge cases → candidate interview questions to pick from, a one-at-a-time live session for capturing answers and running notes as they're gathered, optional LLM enrichment of the raw answers, and a one-click meeting-minutes export. |
+| **System Map** | Ready | Documents about how your systems integrate → a reviewed, versioned graph of systems and the data (incl. PII) flowing between them -- LLM extraction, entity-resolution merge review, and PII tagging all stay human-reviewed before a build feeds the graph, then NetworkX answers PII flow tracing, cycle/orphan checks, path finding, and centrality; exports to JSON or nodes/edges CSV. |
 | Report Generator | Soon | Will turn a Spec Builder project into a branded PDF/deck, reusing Infographic Builder's export pipeline. |
 | Data Explorer | Soon | Will search and track delivery status across every Spec Builder project at once. |
 
@@ -150,13 +151,14 @@ in the browser as "Failed to fetch" — the last log line before the gap is the 
 ```
 backend/      One FastAPI process: Sequence/Diagram Slides/Infographic/Story/
               Knowledge Base (app/kb_*.py, routes/knowledge_base.py)/Discovery Q&A
-              (app/discovery_qa_*.py, routes/discovery_qa.py) routes (/api/*) plus
+              (app/discovery_qa_*.py, routes/discovery_qa.py)/System Map
+              (app/system_map_*.py, routes/system_map.py) routes (/api/*) plus
               Spec Builder's app (backend/app/spec_builder/) mounted at /pm/*
 frontend/     One React app: the rail-nav shell, plus each tool's canvas/panels —
               Knowledge Base's live under frontend/src/components/knowledge-base/,
-              Discovery Q&A's under frontend/src/components/discovery-qa/, Spec
-              Builder's own pages/components live under
-              frontend/src/features/spec-builder/
+              Discovery Q&A's under frontend/src/components/discovery-qa/, System
+              Map's under frontend/src/components/system-map/, Spec Builder's own
+              pages/components live under frontend/src/features/spec-builder/
 docs/         Spec Builder's full feature/known-issues/roadmap docs under
               docs/spec-builder/, Knowledge Base's design plan under
               docs/knowledge-base/, Discovery Q&A's under docs/discovery-qa/

@@ -3,6 +3,12 @@ uvicorn[standard]==0.30.6
 pydantic>=2.9.2
 pydantic-settings==2.5.2
 openai==1.109.1
+# System Map tool's graph analysis (app/system_map_graph.py) -- PII flow
+# tracing, cycle detection, orphan checks, path finding, centrality over
+# the confirmed integration graph. 3.3 dropped Python 3.9 support outright
+# (requires >=3.10) -- pinned below 3.3 so `pip install` itself doesn't
+# fail on 3.9, same as this app's other Python-3.9-compatible pins.
+networkx<3.3
 python-multipart==0.0.9
 pypdf==4.3.1
 python-docx==1.1.2
