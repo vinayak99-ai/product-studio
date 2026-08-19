@@ -122,6 +122,19 @@ CLARIFY_SYSTEM_PROMPT = (
         "to ask."
 )
 
+def _renumber_questions(result: ClarifyResult, history: list[AnsweredClarification]) -> ClarifyResult:
+    """The LLM numbers each round's questions from scratch (its prompt has
+    no reason to know how many questions came before), so trusting its `id`
+    verbatim risks a later round reusing an id an earlier, already-answered
+    question already used -- collapsing them under one React key in any UI
+    that accumulates rounds into a single "previously answered" list.
+    Renumber here instead, continuing from where prior rounds left off, so
+    ids stay unique for the whole clarification conversation -- same
+    "never trust the LLM's own id" convention as discovery_qa_llm.py."""
+    for i, q in enumerate(result.questions):
+        q.id = f"Q{len(history) + i + 1}"
+    return result
+
 def run_clarify(
     extracted: ExtractedRequirements,
     history: list[AnsweredClarification] | None = None,
@@ -141,7 +154,8 @@ def run_clarify(
     Already answered in this clarification round:
     {history_block}
     """
-    return generate_structured_sync(CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
+    result = generate_structured_sync(CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
+    return _renumber_questions(result, history)
 
 # ---------- Stage 3: Generation ----------
 # Schema modeled on GitHub Spec Kit's spec-template.md: prioritized,
@@ -751,7 +765,8 @@ def run_architecture_clarify(
     Already answered in this clarification round:
     {history_block}
     """
-    return generate_structured_sync(ARCHITECTURE_CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
+    result = generate_structured_sync(ARCHITECTURE_CLARIFY_SYSTEM_PROMPT, prompt, ClarifyResult)
+    return _renumber_questions(result, history)
 
 # ---------- Stage 6: Epics ----------
 # Groups the spec's EXISTING user stories into Jira-style epics ("functional"
