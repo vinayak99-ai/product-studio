@@ -138,9 +138,24 @@ def api_delete_project(project_id: str) -> dict:
 
 @router.post("/projects/{project_id}/documents/upload", response_model=SourceDocumentMeta)
 async def api_upload_document(project_id: str, file: UploadFile = File(...)) -> SourceDocumentMeta:
+    """Saves the raw upload, then immediately runs extraction on it -- the
+    two used to be separate manual steps (upload, then a distinct Extract
+    click). If the LLM call fails, the document is still saved and left
+    `extraction_status="pending"` so the existing manual Extract button can
+    retry it; upload itself never fails because of a downstream LLM error."""
     _require_project(project_id)
     content = await extract_text(file)
-    return save_document(project_id, file.filename or "untitled", content, kind="raw")
+    doc_meta = save_document(project_id, file.filename or "untitled", content, kind="raw")
+
+    try:
+        draft = await extract_from_document(doc_meta.id, doc_meta.filename, content)
+    except OpenAIError:
+        return doc_meta
+
+    save_extraction_draft(project_id, draft)
+    doc_meta.extraction_status = "extracted"
+    save_document_meta(project_id, doc_meta)
+    return doc_meta
 
 
 @router.post("/projects/{project_id}/documents/structured", response_model=SourceDocumentMeta)

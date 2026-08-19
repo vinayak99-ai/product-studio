@@ -51,6 +51,7 @@ export function SystemMapDocuments({ projectId }: SystemMapDocumentsProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [uploadBusy, setUploadBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [structuredFilename, setStructuredFilename] = useState('')
@@ -77,11 +78,18 @@ export function SystemMapDocuments({ projectId }: SystemMapDocumentsProps) {
     if (!file) return
     e.target.value = ''
     setError(null)
+    setUploadBusy(true)
     try {
-      await uploadDocument(projectId, file)
+      // Upload runs extraction immediately server-side -- if it succeeded,
+      // skip straight to review instead of leaving the user to find and
+      // click a separate Extract button.
+      const doc = await uploadDocument(projectId, file)
       await refresh()
+      if (doc.extraction_status === 'extracted') setReviewingId(doc.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed.')
+    } finally {
+      setUploadBusy(false)
     }
   }
 
@@ -169,9 +177,10 @@ export function SystemMapDocuments({ projectId }: SystemMapDocumentsProps) {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-primary hover:text-primary"
+            disabled={uploadBusy}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Upload file
+            {uploadBusy ? 'Uploading & extracting…' : 'Upload file'}
           </button>
           <input
             ref={fileInputRef}
@@ -183,7 +192,8 @@ export function SystemMapDocuments({ projectId }: SystemMapDocumentsProps) {
           <button
             type="button"
             onClick={() => setShowStructured((v) => !v)}
-            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-primary hover:text-primary"
+            disabled={uploadBusy}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {showStructured ? 'Cancel structured JSON' : 'Paste structured JSON instead'}
           </button>
